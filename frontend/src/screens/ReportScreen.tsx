@@ -8,13 +8,16 @@ interface Props {
   lines: TranscriptEntry[];
   /** Back to the briefing screen, keeping the pasted text. */
   onNewInterview: () => void;
+  /** Set when the interview broke before it finished, so the report says it covers only part of it. */
+  breakMessage?: string | null;
 }
 
 /** Screen shown after an interview: a waiting state, then the report, or a readable reason there is none. */
-export function ReportScreen({ state, lines, onNewInterview }: Props) {
+export function ReportScreen({ state, lines, onNewInterview, breakMessage = null }: Props) {
   return (
     <>
       <h2>Your assessment</h2>
+      {breakMessage && <p role="alert">{breakMessage}</p>}
       <p>
         <button onClick={onNewInterview}>New interview</button>
         {state.phase === "ready" && (

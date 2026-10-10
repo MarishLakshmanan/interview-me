@@ -27,9 +27,18 @@ describe("assessmentDecision", () => {
   const talked = [entry("interviewer", "Q1?", 1), entry("candidate", "My answer", 1)];
 
   it("waits while the interview has not ended", () => {
-    for (const status of ["idle", "connecting", "live", "error"] as const) {
+    for (const status of ["idle", "connecting", "live"] as const) {
       expect(assessmentDecision(status, talked)).toBe("wait");
     }
+  });
+
+  it("only offers an assessment after a broken interview, never requests one by itself", () => {
+    expect(assessmentDecision("error", talked)).toBe("offer");
+  });
+
+  it("offers nothing after a broken interview in which the candidate said nothing", () => {
+    expect(assessmentDecision("error", [entry("interviewer", "Q1?", 1)])).toBe("wait");
+    expect(assessmentDecision("error", [])).toBe("wait");
   });
 
   it("requests an assessment once the interview has ended and the candidate answered", () => {

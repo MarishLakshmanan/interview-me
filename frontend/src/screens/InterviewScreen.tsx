@@ -1,5 +1,6 @@
 import type { PlannedQuestion } from "../plan/planApi";
 import type { useInterview } from "../session/useInterview";
+import { ASSESS_AFTER_BREAK_NOTE } from "../failures";
 import { downloadTranscript } from "../download";
 import { endReasonText, questionProgressText, speakerLabel } from "../session/transcript";
 
@@ -9,10 +10,13 @@ interface Props {
   plan: PlannedQuestion[];
   onStartAgain: () => void;
   onChangeBriefing: () => void;
+  /** True after a broken interview in which the candidate answered: show the assess button. */
+  assessOffered: boolean;
+  onAssess: () => void;
 }
 
 /** Screen for the live interview: transcript, interviewer state, question progress and the end button. */
-export function InterviewScreen({ interview, plan, onStartAgain, onChangeBriefing }: Props) {
+export function InterviewScreen({ interview, plan, onStartAgain, onChangeBriefing, assessOffered, onAssess }: Props) {
   const { status, lines, interviewerState, question, endReason, errorMessage, notice } = interview;
   const running = status === "connecting" || status === "live";
   const progress = questionProgressText(question, plan.length);
@@ -24,6 +28,11 @@ export function InterviewScreen({ interview, plan, onStartAgain, onChangeBriefin
       {!running && (
         <button onClick={onChangeBriefing} style={{ marginLeft: "0.5rem" }}>
           Change briefing
+        </button>
+      )}
+      {assessOffered && (
+        <button onClick={onAssess} style={{ marginLeft: "0.5rem" }}>
+          Assess what was said
         </button>
       )}
       {lines.length > 0 && !running && (
@@ -40,6 +49,7 @@ export function InterviewScreen({ interview, plan, onStartAgain, onChangeBriefin
       {status === "ended" && endReason && <p>{endReasonText(endReason)}</p>}
       {notice && <p role="status">{notice}</p>}
       {errorMessage && <p role="alert">{errorMessage}</p>}
+      {assessOffered && <p>{ASSESS_AFTER_BREAK_NOTE}</p>}
 
       <ol aria-label="Transcript" style={{ listStyle: "none", padding: 0 }}>
         {lines.map((line, i) => (

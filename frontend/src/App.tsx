@@ -10,7 +10,7 @@ export function App() {
   const practice = usePractice();
   const interview = useInterview();
   const { plan } = practice;
-  const assessment = useAssessment(interview.status, interview.lines, interview.question, practice.briefing, plan);
+  const { state: assessment, offered, ask } = useAssessment(interview.status, interview.lines, interview.question, practice.briefing, plan);
 
   async function prepareAndStart() {
     const prepared = await practice.prepare();
@@ -33,14 +33,21 @@ export function App() {
           error={practice.error}
           onSubmit={() => void prepareAndStart()}
         />
-      ) : interview.status === "ended" ? (
-        <ReportScreen state={assessment} lines={interview.lines} onNewInterview={newInterview} />
+      ) : interview.status === "ended" || assessment.phase !== "idle" ? (
+        <ReportScreen
+          state={assessment}
+          lines={interview.lines}
+          onNewInterview={newInterview}
+          breakMessage={interview.status === "error" ? interview.errorMessage : null}
+        />
       ) : (
         <InterviewScreen
           interview={interview}
           plan={plan}
           onStartAgain={() => void interview.start(plan)}
           onChangeBriefing={practice.changeBriefing}
+          assessOffered={offered}
+          onAssess={ask}
         />
       )}
     </main>

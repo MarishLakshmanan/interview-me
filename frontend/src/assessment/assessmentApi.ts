@@ -1,9 +1,10 @@
 import { postJson, type FetchLike } from "../api/postJson";
+import { ASSESSMENT_FALLBACK } from "../failures";
 import type { Assessment, AssessmentRequest } from "./assessment";
 
 export type AssessmentResult = { ok: true; assessment: Assessment } | { ok: false; message: string };
 
-const FALLBACK = "The assessment could not be made. Please try again later; your transcript can still be downloaded.";
+const FALLBACK = ASSESSMENT_FALLBACK;
 
 const looksLikeAssessment = (body: any): body is Assessment =>
   typeof body?.summary === "string" &&

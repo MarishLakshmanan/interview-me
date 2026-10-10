@@ -1,3 +1,5 @@
+import { BACKEND_UNREACHABLE } from "../failures";
+
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export type PostResult = { ok: true; body: any } | { ok: false; message: string };
@@ -25,7 +27,7 @@ export async function postJson(
       body: JSON.stringify(payload),
     });
   } catch {
-    return { ok: false, message: "Could not reach the backend. Check that it is running, then try again." };
+    return { ok: false, message: BACKEND_UNREACHABLE };
   }
 
   let body: any = null;

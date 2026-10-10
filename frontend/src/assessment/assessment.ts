@@ -34,19 +34,23 @@ export interface AssessmentRequest {
   reached: number;
 }
 
-export type AssessmentDecision = "wait" | "nothing" | "request";
+export type AssessmentDecision = "wait" | "nothing" | "request" | "offer";
 
 /**
  * Decide whether to ask for an assessment. This is the only gate: nothing is requested before
- * the interview has ended, and nothing is requested when the candidate said nothing.
+ * the interview has ended, and nothing is requested when the candidate said nothing. An interview
+ * that broke (status "error") is only ever offered an assessment, never given one automatically,
+ * because the text model's daily quota is small.
  *
- * @param status The interview's status ("ended" once the backend has said so).
+ * @param status The interview's status ("ended" once the backend has said so, "error" if it broke).
  * @param lines The finished transcript lines.
- * @returns "wait" before the end, "nothing" when there is no candidate answer, otherwise "request".
+ * @returns "wait" before the end (or after a break with no answers), "nothing" when an ended interview
+ *   has no candidate answer, "offer" after a break with answers, otherwise "request".
  */
 export function assessmentDecision(status: string, lines: TranscriptEntry[]): AssessmentDecision {
-  if (status !== "ended") return "wait";
+  if (status !== "ended" && status !== "error") return "wait";
   const answered = lines.some((line) => line.speaker === "candidate" && line.text.trim() !== "");
+  if (status === "error") return answered ? "offer" : "wait";
   return answered ? "request" : "nothing";
 }
 

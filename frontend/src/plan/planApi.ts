@@ -1,5 +1,6 @@
 import { postJson, type FetchLike } from "../api/postJson";
 import type { Briefing } from "../briefing/briefing";
+import { PLAN_FALLBACK } from "../failures";
 
 /** One planned question, as POST /api/plan returns it (backend/app/plan.py). */
 export interface PlannedQuestion {
@@ -12,10 +13,6 @@ export interface PlannedQuestion {
 }
 
 export type PlanResult = { ok: true; plan: PlannedQuestion[] } | { ok: false; message: string };
-
-/** Shown next to a failed plan step where a retry is offered. */
-export const DAILY_LIMIT_NOTE =
-  "Preparing a plan uses one of a small number of free model requests per day, so retries may be refused until tomorrow.";
 
 const isPlannedQuestion = (q: any): q is PlannedQuestion =>
   !!q &&
@@ -32,7 +29,7 @@ const isPlannedQuestion = (q: any): q is PlannedQuestion =>
  * @returns PlanResult: The plan, or a message for the candidate explaining why there is none. Never throws.
  */
 export async function requestPlan(briefing: Briefing, fetchFn?: FetchLike): Promise<PlanResult> {
-  const fallback = "The question plan could not be prepared. Please try again.";
+  const fallback = PLAN_FALLBACK;
   const result = await postJson(
     "/api/plan",
     { job_description: briefing.jobDescription, company_summary: briefing.companySummary, resume: briefing.resume },
