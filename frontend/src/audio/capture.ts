@@ -1,3 +1,4 @@
+import { awaitPermission, MicError } from "./micErrors";
 import { PcmChunker } from "./pcm";
 
 export interface Capture {
@@ -10,16 +11,26 @@ export interface Capture {
  * The microphone is never muted; it keeps streaming while the interviewer speaks.
  *
  * @param onChunk Called with each 1280-byte chunk.
+ * @param onWaitingForPermission Called if the permission prompt is still unanswered after a few seconds.
  * @returns A handle whose stop() releases the microphone and the audio context.
- * @throws If microphone permission is denied or no microphone is available.
+ * @throws MicError If the microphone is blocked, missing, busy, withheld on this address or the prompt is ignored.
  */
-export async function startCapture(onChunk: (chunk: ArrayBuffer) => void): Promise<Capture> {
+export async function startCapture(
+  onChunk: (chunk: ArrayBuffer) => void,
+  onWaitingForPermission: () => void = () => {},
+): Promise<Capture> {
   const context = new AudioContext({ sampleRate: 16000 });
   let stream: MediaStream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    // The browser hides mediaDevices entirely on a page that is not a secure context (e.g. a LAN address).
+    if (!navigator.mediaDevices?.getUserMedia) throw new MicError("insecure");
+    stream = await awaitPermission(
+      navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      }),
+      onWaitingForPermission,
+      (late) => late.getTracks().forEach((track) => track.stop()),
+    );
     await context.audioWorklet.addModule(new URL("./pcm-recorder.worklet.js", import.meta.url));
   } catch (error) {
     void context.close();
