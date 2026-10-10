@@ -8,7 +8,7 @@ export interface TranscriptEntry {
   final: boolean;
   /** True when the interviewer was interrupted while this line was being spoken. */
   cutOff: boolean;
-  /** The planned question number that was current when the line finished (null before the first). */
+  /** The planned question number that was current when the line was first seen (null before the first). */
   question: number | null;
 }
 
@@ -36,7 +36,7 @@ function withLine(lines: TranscriptEntry[], index: number, change: Partial<Trans
  *
  * @param lines The transcript so far.
  * @param message The speaker, text and final flag that just arrived.
- * @param question The current question number; a line is tagged with it when it finishes.
+ * @param question The current question number; a line is tagged with it when it is first seen and keeps it.
  * @returns The new transcript; the input is not modified.
  */
 function applyTranscript(
@@ -49,12 +49,12 @@ function applyTranscript(
   const openLine = open >= 0 ? lines[open] : null;
 
   if (message.final) {
-    if (openLine) return withLine(lines, open, { text: message.text, final: true, question });
+    if (openLine) return withLine(lines, open, { text: message.text, final: true });
     return [...lines, { speaker: message.speaker, text: message.text, final: true, cutOff: false, question }];
   }
   if (openLine && !openLine.cutOff) return withLine(lines, open, { text: openLine.text + message.text });
   // A partial after a cut-off (or after a final) belongs to a new line.
-  const closed = openLine ? withLine(lines, open, { final: true, question }) : lines;
+  const closed = openLine ? withLine(lines, open, { final: true }) : lines;
   return [...closed, { speaker: message.speaker, text: message.text, final: false, cutOff: false, question }];
 }
 
@@ -95,7 +95,7 @@ export function applyServerMessage(data: SessionData, message: ServerMessage): S
       return { ...data, lines: markCutOff(data.lines) };
     case "interview_ended": {
       // Keep what was shown (with cut-off marks); the backend's finished lines are only a fallback.
-      const shown = data.lines.filter((line) => line.text.trim() !== "").map((line) => (line.final ? line : { ...line, final: true, question: data.question }));
+      const shown = data.lines.filter((line) => line.text.trim() !== "").map((line) => (line.final ? line : { ...line, final: true }));
       const lines = shown.length > 0 ? shown : fromFinished(message.transcript, data.question);
       return { ...data, lines, endReason: message.reason };
     }
