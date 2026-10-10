@@ -17,7 +17,7 @@ uv run uvicorn app.main:app --reload
 ```
 
 - Health check: http://127.0.0.1:8000/health
-- Interview WebSocket: `ws://127.0.0.1:8000/ws/interview` (protocol in `backend/app/bridge.py`)
+- Interview WebSocket: `ws://127.0.0.1:8000/ws/interview` (protocol in `backend/app/bridge.py`). The first frame the browser sends decides the plan, with no timeout: a `start` message carries the prepared plan, and any other first frame (such as audio) selects the built-in sample plan. The backend answers with a `plan_source` message naming which plan it used (and, for the sample plan, the plan itself), so the assessment is always graded against the questions that were actually asked.
 
 ## Run the frontend
 

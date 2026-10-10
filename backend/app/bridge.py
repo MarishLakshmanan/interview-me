@@ -5,14 +5,20 @@ Wire protocol (first pass):
 Browser -> backend
     binary frame   16 kHz, 16-bit, mono PCM microphone audio
     text frame     {"type": "start", "plan": [{"text", "kind", "tests", "good_answer"} x 7]}
-                   must be the first message to use a plan from POST /api/plan; if the first
-                   message is anything else (such as audio), or nothing arrives within
-                   start_wait_seconds, the built-in sample plan is used and that message is
+                   the browser sends this as its first frame on connect; the first frame decides
+                   the plan, with no timeout. A start message carries the plan from POST /api/plan;
+                   any other first frame (such as audio) selects the built-in sample plan and is
                    handled normally. The interviewer only ever receives
                    each question's text and what it tests, never its good_answer points.
     text frame     {"type": "end"}  the candidate ends the interview early
 
 Backend -> browser
+    text frame     {"type": "plan_source", "source": "start_message" | "sample", "plan": [...]}
+                   always the first message once the plan is decided: which plan the interview
+                   runs on, so the browser can grade against the same one. "plan" (the full
+                   sample plan, strong-answer points included) is present only for "sample",
+                   since the browser has no copy; the assessment must then use it instead of
+                   the prepared plan.
     binary frame   24 kHz, 16-bit, mono PCM interviewer audio
     text frame     {"type": "transcript", "speaker": "candidate" | "interviewer", "text": str, "final": bool}
                    {"type": "question", "number": int}

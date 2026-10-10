@@ -9,7 +9,7 @@ from app.main import create_app
 from tests.scripted_gateway import ScriptedGateway
 from tests.test_plan import BRIEFING, SECRET, model_plan
 
-SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60, start_wait_seconds=0.1)
+SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60)
 PLAN = model_plan()["questions"]
 
 

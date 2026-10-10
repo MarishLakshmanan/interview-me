@@ -1,6 +1,5 @@
 """FastAPI entry point: a health check and the interview WebSocket."""
 
-import asyncio
 import json
 import logging
 
@@ -107,21 +106,22 @@ def create_app(gateway: GeminiGateway | None = None, settings: Settings | None =
             await websocket.close(code=1011)
             return
 
-        try:  # a browser that sends nothing at first still gets an interview, on the sample plan
-            first = await asyncio.wait_for(websocket.receive(), active_settings.start_wait_seconds)
-        except TimeoutError:
-            first = None
-        if first and first["type"] == "websocket.disconnect":
+        first = await websocket.receive()  # the first frame decides the plan; there is no timeout
+        if first["type"] == "websocket.disconnect":
             return
-        plan, first_message = SAMPLE_PLAN, first
-        start = parse_start_message(first) if first else None
+        plan, first_message, source = SAMPLE_PLAN, first, "sample"
+        start = parse_start_message(first)
         if start is not None:
             try:
-                plan, first_message = plan_from_payload(start.get("plan")), None
+                plan, first_message, source = plan_from_payload(start.get("plan")), None, "start_message"
             except ValueError as error:
                 await websocket.send_text(json.dumps({"type": "error", "message": f"Invalid plan: {error}"}))
                 await websocket.close(code=1008)
                 return
+        announcement = {"type": "plan_source", "source": source}
+        if source == "sample":  # the browser has no copy of the sample plan; it needs one to grade against
+            announcement["plan"] = plan_to_payload(plan)
+        await websocket.send_text(json.dumps(announcement))
 
         await InterviewBridge(websocket, active_settings, plan, gateway, first_message).run()
         try:

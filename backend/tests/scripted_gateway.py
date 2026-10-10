@@ -1,9 +1,13 @@
 """A Gemini gateway that plays a fixed script, so tests need no API key and no network."""
 
 import asyncio
+import json
 from types import SimpleNamespace
 
+from app.plan import SAMPLE_PLAN, plan_to_payload
+
 AFTER_CLOSE = object()  # script step: hold the stream until the interview has closed the session
+SAMPLE_START = json.dumps({"type": "start", "plan": plan_to_payload(SAMPLE_PLAN)})  # the first frame a browser sends
 
 
 def make_event(**fields) -> SimpleNamespace:
