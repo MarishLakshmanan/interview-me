@@ -29,7 +29,7 @@ const initialState: InterviewState = {
  * Own one interview connection: the WebSocket, microphone capture and playback.
  * This is the single place the interview state lives, so a later avatar can read it from here.
  *
- * @returns The current state plus start(plan) and end(). start sends the plan as the first message.
+ * @returns The current state plus start(plan), end() and reset(). start sends the plan as the first message.
  */
 export function useInterview() {
   const [state, setState] = useState<InterviewState>(initialState);
@@ -126,6 +126,11 @@ export function useInterview() {
     }
   }, []);
 
+  /** Clear a finished interview so the next screen starts clean; does nothing while one is running. */
+  const reset = useCallback(() => {
+    if (socket.current === null) setState(initialState);
+  }, []);
+
   useEffect(
     () => () => {
       release();
@@ -137,5 +142,5 @@ export function useInterview() {
   );
 
   const live = state.status === "connecting" || state.status === "live";
-  return { ...state, interviewerState: interviewerState(live, state.interviewerSpeaking), start, end };
+  return { ...state, interviewerState: interviewerState(live, state.interviewerSpeaking), start, end, reset };
 }
