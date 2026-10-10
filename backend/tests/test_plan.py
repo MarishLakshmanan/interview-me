@@ -136,7 +136,20 @@ def test_quota_error_is_readable_and_not_retried() -> None:
     response = post_plan(gateway, BRIEFING)
 
     assert response.status_code == 429
-    assert "limit" in response.json()["error"].lower()
+    assert "wait a minute" in response.json()["error"].lower()
+    assert "day" in response.json()["error"].lower()
+    assert len(gateway.text_prompts) == 1
+
+
+def test_model_failure_is_readable_and_not_retried() -> None:
+    """Any other failure of the model call is a plain message, not a server crash, and is not retried."""
+    gateway = ScriptedGateway(text_replies=[ConnectionError("dns"), model_plan()])
+
+    response = post_plan(gateway, BRIEFING)
+
+    assert response.status_code == 502
+    assert "try again" in response.json()["error"].lower()
+    assert "dns" not in response.json()["error"]
     assert len(gateway.text_prompts) == 1
 
 
