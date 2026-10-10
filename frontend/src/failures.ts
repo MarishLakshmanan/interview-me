@@ -41,9 +41,12 @@ export function endStatus(reason: string): "ended" | "error" {
  * Pick the message for a connection that closed without the backend saying the interview was over.
  *
  * @param opened True if the connection had opened before it closed.
- * @returns The backend-unreachable message if it never opened, otherwise the connection-lost message.
+ * @param sent The error message the backend sent before closing, if any; it is more specific, so it wins.
+ * @returns The backend's own message when there is one, else the backend-unreachable message if the
+ *   connection never opened, otherwise the connection-lost message.
  */
-export function closedConnectionMessage(opened: boolean): string {
+export function closedConnectionMessage(opened: boolean, sent: string | null = null): string {
+  if (sent && sent.trim()) return sent;
   return opened ? CONNECTION_LOST : BACKEND_UNREACHABLE;
 }
 

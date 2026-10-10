@@ -200,7 +200,14 @@ def merge_reply(reply: dict, plan: list[PlannedQuestion], groups: dict[int, list
     summary = reply.get("summary")
     if not isinstance(summary, str) or not summary.strip():
         raise ValueError("the summary is missing.")
-    graded = {item.get("number"): item for item in reply.get("questions") or [] if isinstance(item, dict)}
+    items = reply.get("questions")
+    if not isinstance(items, list):
+        raise ValueError("the question list is missing.")
+    graded = {
+        item["number"]: item
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("number"), int) and not isinstance(item["number"], bool)
+    }
     questions = []
     for number, lines in groups.items():
         item = graded.get(number)

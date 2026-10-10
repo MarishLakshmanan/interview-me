@@ -234,10 +234,11 @@ async def ask_text_model(gateway: "GeminiGateway", settings: Settings, prompt: s
         dict: The model's parsed JSON answer.
 
     Raises:
-        PlanError: If the quota is used up (429), or the reply is unreadable or the call fails (502).
+        PlanError: If the quota is used up (429), or the reply is unreadable (not a JSON object)
+            or the call fails (502).
     """
     try:
-        return await gateway.generate_structured(settings.text_model, prompt, schema)
+        reply = await gateway.generate_structured(settings.text_model, prompt, schema)
     except QuotaExceededError as error:
         raise PlanError(QUOTA_MESSAGE, 429) from error
     except ValueError as error:
@@ -245,6 +246,9 @@ async def ask_text_model(gateway: "GeminiGateway", settings: Settings, prompt: s
     except Exception as error:  # a network or server failure; the details stay in the log
         log.warning("Text model call failed: %s: %s", type(error).__name__, error)
         raise PlanError(MODEL_UNAVAILABLE_MESSAGE, 502) from error
+    if not isinstance(reply, dict):  # valid JSON, but a list or a string cannot be read as a plan or assessment
+        raise PlanError(MODEL_UNREADABLE_MESSAGE, 502)
+    return reply
 
 
 async def build_plan(gateway: "GeminiGateway", settings: Settings, briefing: dict) -> list[PlannedQuestion]:

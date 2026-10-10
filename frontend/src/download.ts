@@ -1,5 +1,8 @@
 import { transcriptToText, type TranscriptEntry } from "./session/transcript";
 
+/** How long the blob URL stays valid after the click, so every browser has time to start the download. */
+const REVOKE_DELAY_MS = 10000;
+
 /**
  * Save text as a file through the browser.
  *
@@ -12,8 +15,12 @@ export function downloadText(filename: string, text: string, type: string): void
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  // Firefox and Safari only start the download for a link that is in the document, and they need the
+  // blob URL to stay valid until it has begun, so revoking is deferred.
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
 
 /**

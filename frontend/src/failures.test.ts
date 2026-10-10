@@ -25,6 +25,17 @@ describe("closedConnectionMessage", () => {
     expect(closedConnectionMessage(true)).toBe(CONNECTION_LOST);
     expect(CONNECTION_LOST).toMatch(/transcript/i);
   });
+
+  it("keeps the specific reason the backend sent before it closed the connection", () => {
+    const sent = "Invalid plan: A plan needs exactly 7 questions.";
+    expect(closedConnectionMessage(true, sent)).toBe(sent);
+    expect(closedConnectionMessage(false, sent)).toBe(sent);
+  });
+
+  it("ignores a blank backend message", () => {
+    expect(closedConnectionMessage(true, "  ")).toBe(CONNECTION_LOST);
+    expect(closedConnectionMessage(true, null)).toBe(CONNECTION_LOST);
+  });
 });
 
 describe("brokenInterviewMessage", () => {

@@ -9,7 +9,7 @@ from app.main import create_app
 from tests.scripted_gateway import ScriptedGateway
 from tests.test_plan import BRIEFING, SECRET, model_plan
 
-SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60, start_wait_seconds=0.1)
+SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60)
 PLAN = model_plan()["questions"]
 
 
@@ -178,6 +178,21 @@ def test_unreadable_model_reply_is_reported_not_passed_on() -> None:
     bad_rating = model_assessment([1, 2])
     bad_rating["questions"][0]["rating"] = "excellent"
     for reply in (missing, bad_rating):
+        gateway = ScriptedGateway(text_replies=[reply])
+
+        response = post_assessment(gateway, request_body(FULL_LINES, 2))
+
+        assert response.status_code == 502
+        assert "try again" in response.json()["error"].lower()
+
+
+def test_non_object_or_oddly_shaped_model_reply_is_a_readable_502() -> None:
+    """A list or string reply, an unhashable number, or a non-list questions field is not a bare 500."""
+    odd_number = model_assessment([1, 2])
+    odd_number["questions"][0]["number"] = [1]
+    odd_questions = model_assessment([1, 2])
+    odd_questions["questions"] = 5
+    for reply in (["x"], "text", odd_number, odd_questions):
         gateway = ScriptedGateway(text_replies=[reply])
 
         response = post_assessment(gateway, request_body(FULL_LINES, 2))

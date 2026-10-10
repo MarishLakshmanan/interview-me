@@ -5,6 +5,7 @@ import { startPlayback, type Playback } from "../audio/playback";
 import type { PlannedQuestion } from "../plan/planApi";
 import { brokenInterviewMessage, closedConnectionMessage, endStatus } from "../failures";
 import { buildStartMessage, parseServerMessage } from "./messages";
+import { settleAudio } from "./settleAudio";
 import { applyServerMessage, emptySession, interviewerState, type SessionData } from "./transcript";
 
 export type InterviewStatus = "idle" | "connecting" | "live" | "ended" | "error";
@@ -16,6 +17,11 @@ export interface InterviewState extends SessionData {
   errorMessage: string | null;
   /** A non-fatal hint, e.g. that we are waiting for the microphone permission prompt. */
   notice: string | null;
+  /**
+   * The sample plan, when the backend said it ran the interview on that instead of the prepared plan
+   * (null otherwise). The assessment must be graded against it.
+   */
+  samplePlan: PlannedQuestion[] | null;
 }
 
 const initialState: InterviewState = {
@@ -24,6 +30,7 @@ const initialState: InterviewState = {
   ...emptySession,
   errorMessage: null,
   notice: null,
+  samplePlan: null,
 };
 
 /**
@@ -37,6 +44,8 @@ export function useInterview() {
   const socket = useRef<WebSocket | null>(null);
   const capture = useRef<Capture | null>(null);
   const playback = useRef<Playback | null>(null);
+  /** The last error message the backend sent on this connection, so a later close cannot hide it. */
+  const backendError = useRef<string | null>(null);
 
   const release = useCallback(() => {
     capture.current?.stop();
@@ -58,6 +67,7 @@ export function useInterview() {
   const start = useCallback(async (plan: PlannedQuestion[]) => {
     if (socket.current) return;
     setState({ ...initialState, status: "connecting" });
+    backendError.current = null;
     let startSent = false;
 
     const scheme = location.protocol === "https:" ? "wss" : "ws";
@@ -73,6 +83,9 @@ export function useInterview() {
       const message = parseServerMessage(event.data);
       if (!message) return;
       switch (message.type) {
+        case "plan_source":
+          if (message.source === "sample") setState((s) => ({ ...s, samplePlan: message.plan ?? null }));
+          break;
         case "transcript":
         case "question":
           setState((s) => ({ ...s, ...applyServerMessage(s, message) }));
@@ -82,6 +95,7 @@ export function useInterview() {
           setState((s) => ({ ...s, ...applyServerMessage(s, message) }));
           break;
         case "error":
+          backendError.current = message.message;
           setState((s) => ({ ...s, errorMessage: message.message }));
           break;
         case "interview_ended":
@@ -106,11 +120,12 @@ export function useInterview() {
     ws.onclose = () => {
       // Closed without "interview_ended": the backend was unreachable, or the connection dropped.
       // The transcript so far stays in the state; resuming is not attempted.
-      if (socket.current === ws) fail(closedConnectionMessage(startSent));
+      // A specific reason the backend already sent (for example an invalid plan) is kept, not replaced.
+      if (socket.current === ws) fail(closedConnectionMessage(startSent, backendError.current));
     };
 
     // Both audio contexts are created synchronously inside the click, before any await.
-    const [pb, cap] = await Promise.allSettled([
+    const outcome = await settleAudio(
       startPlayback((playing) => setState((s) => ({ ...s, interviewerSpeaking: playing }))),
       startCapture(
         (chunk) => {
@@ -118,15 +133,21 @@ export function useInterview() {
         },
         () => setState((s) => ({ ...s, notice: WAITING_FOR_PERMISSION_MESSAGE })),
       ),
-    ]);
-    setState((s) => (s.notice === null ? s : { ...s, notice: null }));
-    if (pb.status === "fulfilled") playback.current = pb.value;
-    if (cap.status === "fulfilled") capture.current = cap.value;
-    const failure = [pb, cap].find((r) => r.status === "rejected");
-    if (failure && failure.status === "rejected") {
-      const reason = failure.reason;
-      fail(reason instanceof Error ? reason.message : "Could not start the audio.");
+      // This attempt is current only while its own socket is the live one: fail(), the end of the
+      // interview and unmount all clear it, and a new start replaces it.
+      () => socket.current === ws,
+    );
+    // A stale attempt must not clear the notice of a newer attempt that has started since.
+    if (outcome.kind !== "stale" || socket.current === null) {
+      setState((s) => (s.notice === null ? s : { ...s, notice: null }));
     }
+    if (outcome.kind === "stale") return;
+    if (outcome.kind === "failed") {
+      fail(outcome.message);
+      return;
+    }
+    playback.current = outcome.playback;
+    capture.current = outcome.capture;
   }, [fail, release]);
 
   const end = useCallback(() => {

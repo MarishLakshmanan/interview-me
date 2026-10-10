@@ -1,7 +1,7 @@
 import type { Briefing } from "../briefing/briefing";
 import type { PlannedQuestion } from "../plan/planApi";
 import type { Speaker } from "../session/messages";
-import type { TranscriptEntry } from "../session/transcript";
+import { speakerLabel, type TranscriptEntry } from "../session/transcript";
 
 export type Rating = "strong" | "adequate" | "weak";
 
@@ -55,6 +55,17 @@ export function assessmentDecision(status: string, lines: TranscriptEntry[]): As
 }
 
 /**
+ * Pick the plan the answers must be graded against: the one the interview actually ran on.
+ *
+ * @param prepared The plan prepared from the briefing and sent in the start message.
+ * @param sample The sample plan, when the backend said it ran the interview on that instead; else null.
+ * @returns The sample plan if the backend used it, otherwise the prepared plan.
+ */
+export function planToGrade(prepared: PlannedQuestion[], sample: PlannedQuestion[] | null): PlannedQuestion[] {
+  return sample ?? prepared;
+}
+
+/**
  * Build the body for the assessment endpoint from what the page holds after the interview.
  *
  * @param briefing The pasted briefing.
@@ -86,8 +97,6 @@ export function buildAssessmentRequest(
 /** Words for each rating, shared by the page and the downloaded file. */
 export const ratingLabel: Record<Rating, string> = { strong: "Strong", adequate: "Adequate", weak: "Weak" };
 
-const speakerName: Record<Speaker, string> = { candidate: "You", interviewer: "Interviewer" };
-
 function bullets(points: string[]): string {
   return points.length > 0 ? points.map((point) => `- ${point}`).join("\n") : "Nothing to note.";
 }
@@ -102,7 +111,7 @@ export function assessmentToMarkdown(assessment: Assessment): string {
   const parts = ["# Interview assessment", `## Summary\n\n${assessment.summary}`];
   for (const q of assessment.questions) {
     const said = q.lines
-      .map((line) => `> ${speakerName[line.speaker]}: ${line.text}${line.cut_off ? " [cut off]" : ""}`)
+      .map((line) => `> ${speakerLabel[line.speaker]}: ${line.text}${line.cut_off ? " [cut off]" : ""}`)
       .join("\n>\n");
     parts.push(
       [

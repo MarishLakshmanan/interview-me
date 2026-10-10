@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from app.errors import QuotaExceededError
-from tests.scripted_gateway import AFTER_CLOSE, ScriptedGateway, call, make_event, say
+from tests.scripted_gateway import AFTER_CLOSE, SAMPLE_START, ScriptedGateway, call, make_event, say
 
-SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60, start_wait_seconds=0.1)
+SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60)
 
 
 def run_interview(script: list, settings: Settings = SETTINGS, end_after: str | None = None):
@@ -30,6 +30,7 @@ def run_interview(script: list, settings: Settings = SETTINGS, end_after: str | 
     client = TestClient(create_app(gateway=gateway, settings=settings))
     messages: list[dict] = []
     with client.websocket_connect("/ws/interview") as ws:
+        ws.send_text(SAMPLE_START)
         while True:
             frame = ws.receive()
             if frame.get("text") is None:
@@ -141,6 +142,8 @@ def test_browser_leaving_ends_with_that_reason(caplog) -> None:
     caplog.set_level(logging.INFO, logger="app.bridge")
     client = TestClient(create_app(gateway=ScriptedGateway([say("interviewer", "Hello.")]), settings=SETTINGS))
     with client.websocket_connect("/ws/interview") as ws:
+        ws.send_text(SAMPLE_START)
+        ws.receive_text()  # which plan is in use
         ws.receive_text()  # the first transcript message, then leave
 
     assert "Interview ended (candidate_left)" in caplog.text
@@ -148,7 +151,7 @@ def test_browser_leaving_ends_with_that_reason(caplog) -> None:
 
 def test_hard_time_limit_ends_the_interview() -> None:
     """When the time limit passes the backend ends the interview itself."""
-    limited = Settings(live_model="m", voice="v", max_interview_seconds=0.2, goodbye_grace_seconds=60, start_wait_seconds=0.1)
+    limited = Settings(live_model="m", voice="v", max_interview_seconds=0.2, goodbye_grace_seconds=60)
     messages, _ = run_interview([say("interviewer", "Hello.")], settings=limited)
 
     assert messages[-1]["reason"] == "time_limit"
@@ -217,6 +220,8 @@ def test_live_session_that_cannot_be_opened_ends_with_a_message() -> None:
     """If the live session cannot even be opened the browser still gets a message and an ending."""
     client = TestClient(create_app(gateway=ScriptedGateway(open_error=RuntimeError("no route")), settings=SETTINGS))
     with client.websocket_connect("/ws/interview") as ws:
+        ws.send_text(SAMPLE_START)
+        assert json.loads(ws.receive_text())["type"] == "plan_source"
         first = json.loads(ws.receive_text())
         last = json.loads(ws.receive_text())
 

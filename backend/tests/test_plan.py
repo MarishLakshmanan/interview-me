@@ -1,6 +1,7 @@
 """Tests for the question plan endpoint and the start message, with Gemini replaced by a scripted gateway."""
 
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,9 +10,10 @@ from app.config import Settings
 from app.gateway import QuotaExceededError
 from app.interviewer import build_interviewer
 from app.main import create_app
+from app.plan import SAMPLE_PLAN, plan_to_payload
 from tests.scripted_gateway import ScriptedGateway, say
 
-SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60, start_wait_seconds=0.1)
+SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60)
 KINDS = ["opener", "technical", "technical", "technical", "behavioural", "behavioural", "motivation"]
 SECRET = "SECRET-STRONG-ANSWER-POINT"
 
@@ -165,6 +167,17 @@ def test_wrong_number_of_questions_is_reported_not_passed_on() -> None:
     assert "try again" in response.json()["error"].lower()
 
 
+@pytest.mark.parametrize("reply", [["not", "an", "object"], "just a string", 7])
+def test_non_object_model_reply_is_a_readable_502_not_a_bare_500(reply) -> None:
+    """A reply that parses as JSON but is not an object reads as an unusable reply."""
+    gateway = ScriptedGateway(text_replies=[reply])
+
+    response = post_plan(gateway, BRIEFING)
+
+    assert response.status_code == 502
+    assert "could not be read" in response.json()["error"].lower()
+
+
 def run_with_first_message(first: str | bytes, gateway: ScriptedGateway) -> list[dict]:
     """Open the interview socket, send a first message, ask to end and collect the JSON replies.
 
@@ -229,15 +242,27 @@ def test_sample_plan_is_used_without_a_start_message_and_keeps_the_first_audio_f
     assert ("audio", b"\x07\x08") in gateway.session.sent
 
 
-def test_sample_plan_is_used_when_the_browser_sends_nothing_at_first() -> None:
-    """A browser that is silent at first still gets its interview, on the sample plan."""
+def test_late_start_message_still_decides_the_plan() -> None:
+    """There is no timeout fallback: a start message that arrives late is still the one that picks the plan."""
     gateway = ScriptedGateway([say("interviewer", "Hello.")])
     client = TestClient(create_app(gateway=gateway, settings=SETTINGS))
     with client.websocket_connect("/ws/interview") as ws:
-        message = json.loads(ws.receive_text())
+        time.sleep(2)  # longer than the old 1.5 s default wait; nothing is sent meanwhile
+        ws.send_text(json.dumps({"type": "start", "plan": model_plan()["questions"]}))
         ws.send_text(json.dumps({"type": "end"}))
         while json.loads(ws.receive_text())["type"] != "interview_ended":
             pass
 
-    assert message["type"] == "transcript"
-    assert [q.kind for q in gateway.plan] == KINDS
+    assert [q.text for q in gateway.plan] == [f"Question number {n}?" for n in range(1, 8)]
+
+
+def test_browser_is_told_which_plan_source_the_interview_uses() -> None:
+    """The first message back names the plan source, so the page can never grade against another plan."""
+    start = json.dumps({"type": "start", "plan": model_plan()["questions"]})
+
+    from_start = run_with_first_message(start, ScriptedGateway([say("interviewer", "Hello.")]))
+    from_audio = run_with_first_message(b"\x07\x08", ScriptedGateway([say("interviewer", "Hello.")]))
+
+    assert from_start[0] == {"type": "plan_source", "source": "start_message"}
+    assert from_audio[0] == {"type": "plan_source", "source": "sample", "plan": plan_to_payload(SAMPLE_PLAN)}
+

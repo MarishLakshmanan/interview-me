@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PlannedQuestion } from "../plan/planApi";
-import type { TranscriptEntry } from "../session/transcript";
+import { speakerLabel, type TranscriptEntry } from "../session/transcript";
 import {
   assessmentDecision,
   assessmentToMarkdown,
   buildAssessmentRequest,
+  planToGrade,
   type Assessment,
 } from "./assessment";
 
@@ -78,6 +79,18 @@ describe("buildAssessmentRequest", () => {
   });
 });
 
+describe("planToGrade", () => {
+  const sample: PlannedQuestion[] = [{ text: "Sample?", kind: "opener", tests: "fit", good_answer: ["s"] }];
+
+  it("grades against the prepared plan unless the backend ran the sample plan", () => {
+    expect(planToGrade(plan, null)).toBe(plan);
+  });
+
+  it("grades against the sample plan when the backend says it used it", () => {
+    expect(planToGrade(plan, sample)).toBe(sample);
+  });
+});
+
 describe("assessmentToMarkdown", () => {
   const assessment: Assessment = {
     summary: "Good grasp of the basics.",
@@ -117,6 +130,12 @@ describe("assessmentToMarkdown", () => {
     const md = assessmentToMarkdown({ ...assessment, not_reached: [] });
     expect(md).toContain("Nothing to note.");
     expect(md).not.toContain("Not reached");
+  });
+
+  it("labels speakers exactly as the transcript screen does (one shared mapping)", () => {
+    const md = assessmentToMarkdown(assessment);
+    expect(md).toContain(`> ${speakerLabel.interviewer}: Q1?`);
+    expect(md).toContain(`> ${speakerLabel.candidate}: I did X.`);
   });
 
   it("shows no numeric score", () => {
