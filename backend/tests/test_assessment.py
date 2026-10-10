@@ -186,6 +186,21 @@ def test_unreadable_model_reply_is_reported_not_passed_on() -> None:
         assert "try again" in response.json()["error"].lower()
 
 
+def test_non_object_or_oddly_shaped_model_reply_is_a_readable_502() -> None:
+    """A list or string reply, an unhashable number, or a non-list questions field is not a bare 500."""
+    odd_number = model_assessment([1, 2])
+    odd_number["questions"][0]["number"] = [1]
+    odd_questions = model_assessment([1, 2])
+    odd_questions["questions"] = 5
+    for reply in (["x"], "text", odd_number, odd_questions):
+        gateway = ScriptedGateway(text_replies=[reply])
+
+        response = post_assessment(gateway, request_body(FULL_LINES, 2))
+
+        assert response.status_code == 502
+        assert "try again" in response.json()["error"].lower()
+
+
 @pytest.mark.parametrize("field", ["briefing", "plan", "lines"])
 def test_malformed_request_is_refused_before_any_model_call(field: str) -> None:
     """A request missing its briefing, plan or lines is refused with no model call."""

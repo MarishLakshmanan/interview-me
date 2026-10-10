@@ -165,6 +165,17 @@ def test_wrong_number_of_questions_is_reported_not_passed_on() -> None:
     assert "try again" in response.json()["error"].lower()
 
 
+@pytest.mark.parametrize("reply", [["not", "an", "object"], "just a string", 7])
+def test_non_object_model_reply_is_a_readable_502_not_a_bare_500(reply) -> None:
+    """A reply that parses as JSON but is not an object reads as an unusable reply."""
+    gateway = ScriptedGateway(text_replies=[reply])
+
+    response = post_plan(gateway, BRIEFING)
+
+    assert response.status_code == 502
+    assert "could not be read" in response.json()["error"].lower()
+
+
 def run_with_first_message(first: str | bytes, gateway: ScriptedGateway) -> list[dict]:
     """Open the interview socket, send a first message, ask to end and collect the JSON replies.
 
