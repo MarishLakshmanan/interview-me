@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlannedQuestion } from "../plan/planApi";
-import type { TranscriptEntry } from "../session/transcript";
+import { speakerLabel, type TranscriptEntry } from "../session/transcript";
 import {
   assessmentDecision,
   assessmentToMarkdown,
@@ -117,6 +117,12 @@ describe("assessmentToMarkdown", () => {
     const md = assessmentToMarkdown({ ...assessment, not_reached: [] });
     expect(md).toContain("Nothing to note.");
     expect(md).not.toContain("Not reached");
+  });
+
+  it("labels speakers exactly as the transcript screen does (one shared mapping)", () => {
+    const md = assessmentToMarkdown(assessment);
+    expect(md).toContain(`> ${speakerLabel.interviewer}: Q1?`);
+    expect(md).toContain(`> ${speakerLabel.candidate}: I did X.`);
   });
 
   it("shows no numeric score", () => {
