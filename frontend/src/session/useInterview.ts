@@ -3,6 +3,7 @@ import { startCapture, type Capture } from "../audio/capture";
 import { WAITING_FOR_PERMISSION_MESSAGE } from "../audio/micErrors";
 import { startPlayback, type Playback } from "../audio/playback";
 import type { PlannedQuestion } from "../plan/planApi";
+import { brokenInterviewMessage, closedConnectionMessage, endStatus } from "../failures";
 import { buildStartMessage, parseServerMessage } from "./messages";
 import { applyServerMessage, emptySession, interviewerState, type SessionData } from "./transcript";
 
@@ -86,7 +87,13 @@ export function useInterview() {
         case "interview_ended":
           release();
           socket.current = null;
-          setState((s) => ({ ...s, ...applyServerMessage(s, message), status: "ended", interviewerSpeaking: false }));
+          setState((s) => ({
+            ...s,
+            ...applyServerMessage(s, message),
+            status: endStatus(message.reason),
+            interviewerSpeaking: false,
+            errorMessage: endStatus(message.reason) === "error" ? brokenInterviewMessage(s.errorMessage) : s.errorMessage,
+          }));
           break;
       }
     };
@@ -97,7 +104,9 @@ export function useInterview() {
       setState((s) => (s.status === "connecting" ? { ...s, status: "live" } : s));
     };
     ws.onclose = () => {
-      if (socket.current === ws) fail("The connection to the interviewer was lost.");
+      // Closed without "interview_ended": the backend was unreachable, or the connection dropped.
+      // The transcript so far stays in the state; resuming is not attempted.
+      if (socket.current === ws) fail(closedConnectionMessage(startSent));
     };
 
     // Both audio contexts are created synchronously inside the click, before any await.

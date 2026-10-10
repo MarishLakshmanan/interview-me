@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DAILY_LIMIT_NOTE, requestPlan, type PlannedQuestion } from "./planApi";
+import { DAILY_LIMIT_NOTE } from "../failures";
+import { requestPlan, type PlannedQuestion } from "./planApi";
 
 const briefing = { jobDescription: "jd", companySummary: "co", resume: "cv" };
 const question = (n: number): PlannedQuestion => ({ text: `Q${n}`, kind: "technical", tests: "x", good_answer: ["a"] });

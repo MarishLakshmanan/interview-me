@@ -1,13 +1,16 @@
 """The question plan: its shape, the sample plan, and the step that builds one from a briefing."""
 
+import logging
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
 from app.config import Settings
-from app.errors import QuotaExceededError
+from app.errors import MODEL_UNAVAILABLE_MESSAGE, MODEL_UNREADABLE_MESSAGE, QUOTA_MESSAGE, QuotaExceededError
 
 if TYPE_CHECKING:
     from app.gateway import GeminiGateway
+
+log = logging.getLogger(__name__)
 
 PLAN_KINDS = ["opener", "technical", "technical", "technical", "behavioural", "behavioural", "motivation"]
 MIN_JOB_DESCRIPTION_WORDS = 30
@@ -231,16 +234,17 @@ async def ask_text_model(gateway: "GeminiGateway", settings: Settings, prompt: s
         dict: The model's parsed JSON answer.
 
     Raises:
-        PlanError: If the quota is used up (429) or the reply is not valid JSON (502).
+        PlanError: If the quota is used up (429), or the reply is unreadable or the call fails (502).
     """
     try:
         return await gateway.generate_structured(settings.text_model, prompt, schema)
     except QuotaExceededError as error:
-        raise PlanError(
-            "The daily request limit for the model has been reached. Please try again later.", 429
-        ) from error
+        raise PlanError(QUOTA_MESSAGE, 429) from error
     except ValueError as error:
-        raise PlanError("The model's reply could not be read. Please try again.", 502) from error
+        raise PlanError(MODEL_UNREADABLE_MESSAGE, 502) from error
+    except Exception as error:  # a network or server failure; the details stay in the log
+        log.warning("Text model call failed: %s: %s", type(error).__name__, error)
+        raise PlanError(MODEL_UNAVAILABLE_MESSAGE, 502) from error
 
 
 async def build_plan(gateway: "GeminiGateway", settings: Settings, briefing: dict) -> list[PlannedQuestion]:

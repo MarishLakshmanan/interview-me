@@ -18,7 +18,8 @@ Backend -> browser
                    {"type": "question", "number": int}
                    {"type": "interrupted"}  stop playback and drop queued audio
                    {"type": "turn_complete"}
-                   {"type": "error", "message": str}
+                   {"type": "error", "message": str}  plain-words failure; the interview then ends
+                                                      with reason "error" and the transcript so far
                    {"type": "interview_ended", "reason": str, "transcript": [{"speaker": str, "text": str}]}
 """
 
@@ -31,6 +32,7 @@ from dataclasses import asdict, dataclass
 from fastapi import WebSocket, WebSocketDisconnect
 
 from app.config import Settings
+from app.errors import live_failure_message
 from app.gateway import GeminiGateway, LiveSession
 from app.plan import PlannedQuestion
 
@@ -92,23 +94,25 @@ class InterviewBridge:
         Returns:
             list[TranscriptLine]: The finished lines of the conversation, in order.
         """
-        self._session = await self._gateway.open_live_session(self._plan, self._settings)
-
-        helpers = [asyncio.create_task(self._upstream()), asyncio.create_task(self._time_limit())]
-        self._session.send_text(KICKOFF_TEXT)
+        helpers: list[asyncio.Task] = []
         started = time.monotonic()
         try:
+            self._session = await self._gateway.open_live_session(self._plan, self._settings)
+            helpers = [asyncio.create_task(self._upstream()), asyncio.create_task(self._time_limit())]
+            self._session.send_text(KICKOFF_TEXT)
             async for event in self._session.events():
                 await self._handle_event(event)
-        except Exception as error:  # report any failure to the browser instead of dropping it
+        except Exception as error:  # tell the browser in plain words instead of dropping it
             log.exception("Live session failed")
-            self._end_reason = self._end_reason or "error"
-            await self._send_json({"type": "error", "message": f"{type(error).__name__}: {error}"})
+            if self._end_reason is None:
+                self._end_reason = "error"
+                await self._send_json({"type": "error", "message": live_failure_message(error)})
         finally:
             for task in [*helpers, self._grace_task]:
                 if task:
                     task.cancel()
-            self._session.close()
+            if self._session:
+                self._session.close()
         log.info("Interview ended (%s) after %.0f s", self._end_reason or "completed", time.monotonic() - started)
         await self._send_json(
             {
@@ -125,8 +129,8 @@ class InterviewBridge:
         Args:
             event (Event): An event yielded by `Runner.run_live()`.
         """
-        if event.error_code:
-            await self._send_json({"type": "error", "message": f"{event.error_code}: {event.error_message}"})
+        if event.error_code:  # a live error ends the interview; resuming is not attempted
+            raise RuntimeError(f"Live model error {event.error_code}: {event.error_message}")
 
         if event.interrupted:
             await self._send_json({"type": "interrupted"})

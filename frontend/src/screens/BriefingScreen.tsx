@@ -1,5 +1,5 @@
 import { validateBriefing, type Briefing } from "../briefing/briefing";
-import { DAILY_LIMIT_NOTE } from "../plan/planApi";
+import { DAILY_LIMIT_NOTE } from "../failures";
 
 interface Props {
   briefing: Briefing;

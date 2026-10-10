@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.errors import QuotaExceededError
 from tests.scripted_gateway import AFTER_CLOSE, ScriptedGateway, call, make_event, say
 
 SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60, start_wait_seconds=0.1)
@@ -165,3 +166,59 @@ def test_candidate_side_sends_kickoff_and_microphone_audio() -> None:
 
     assert gateway.session.sent[0][0] == "text"
     assert ("audio", b"\x01\x02") in gateway.session.sent
+
+
+def test_live_quota_error_ends_the_interview_with_a_plain_message_and_keeps_the_transcript() -> None:
+    """A quota error from the live model ends the interview, says to wait, and keeps the lines so far."""
+    messages, _ = run_interview(
+        [
+            say("interviewer", "Tell me about yourself."),
+            say("candidate", "I am an engineer."),
+            QuotaExceededError("429 RESOURCE_EXHAUSTED"),
+        ]
+    )
+
+    error = next(m for m in messages if m["type"] == "error")
+    assert "wait a minute" in error["message"].lower()
+    assert "day" in error["message"].lower()
+    assert "RESOURCE_EXHAUSTED" not in error["message"]
+    assert messages[-1]["type"] == "interview_ended"
+    assert messages[-1]["reason"] == "error"
+    assert messages[-1]["transcript"] == [
+        {"speaker": "interviewer", "text": "Tell me about yourself."},
+        {"speaker": "candidate", "text": "I am an engineer."},
+    ]
+
+
+def test_live_failure_is_reported_in_plain_words_not_as_an_exception_name() -> None:
+    """Any other live failure ends the interview with a general message and no internals."""
+    messages, _ = run_interview([say("interviewer", "Hello."), ConnectionError("socket closed 1011")])
+
+    error = next(m for m in messages if m["type"] == "error")
+    assert "ConnectionError" not in error["message"] and "1011" not in error["message"]
+    assert "transcript" in error["message"].lower()
+    assert messages[-1]["reason"] == "error"
+    assert messages[-1]["transcript"] == [{"speaker": "interviewer", "text": "Hello."}]
+
+
+def test_error_event_from_the_live_model_ends_the_interview() -> None:
+    """An error event (not an exception) from the live stream is fatal too, and a 429 reads as quota."""
+    messages, _ = run_interview(
+        [say("interviewer", "Hello."), make_event(error_code="429", error_message="quota exceeded")]
+    )
+
+    error = next(m for m in messages if m["type"] == "error")
+    assert "wait a minute" in error["message"].lower()
+    assert messages[-1]["reason"] == "error"
+    assert messages[-1]["transcript"] == [{"speaker": "interviewer", "text": "Hello."}]
+
+
+def test_live_session_that_cannot_be_opened_ends_with_a_message() -> None:
+    """If the live session cannot even be opened the browser still gets a message and an ending."""
+    client = TestClient(create_app(gateway=ScriptedGateway(open_error=RuntimeError("no route")), settings=SETTINGS))
+    with client.websocket_connect("/ws/interview") as ws:
+        first = json.loads(ws.receive_text())
+        last = json.loads(ws.receive_text())
+
+    assert first["type"] == "error"
+    assert last == {"type": "interview_ended", "reason": "error", "transcript": []}

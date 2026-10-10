@@ -60,7 +60,8 @@ class ScriptedLiveSession:
         """Set up the session.
 
         Args:
-            script (list): Events to play in order; `AFTER_CLOSE` holds the stream until closed.
+            script (list): Events to play in order; `AFTER_CLOSE` holds the stream until closed;
+                an exception is raised from the stream at that point, like a live failure.
         """
         self._script = script
         self._closed = asyncio.Event()
@@ -95,6 +96,8 @@ class ScriptedLiveSession:
         for item in self._script:
             if item is AFTER_CLOSE:
                 await self._closed.wait()
+            elif isinstance(item, Exception):
+                raise item
             else:
                 yield item
         await self._closed.wait()
@@ -103,14 +106,21 @@ class ScriptedLiveSession:
 class ScriptedGateway:
     """Stands in for the real Gemini gateway: scripted live events, queued text-model replies."""
 
-    def __init__(self, script: list | None = None, text_replies: list[dict | Exception] | None = None) -> None:
+    def __init__(
+        self,
+        script: list | None = None,
+        text_replies: list[dict | Exception] | None = None,
+        open_error: Exception | None = None,
+    ) -> None:
         """Set up the gateway.
 
         Args:
             script (list, optional): Live events to play. Defaults to None (an empty interview).
             text_replies (list[dict | Exception], optional): Replies for structured text calls, in order;
                 an exception is raised instead of returned. Defaults to None.
+            open_error (Exception, optional): Raised when a live session is opened. Defaults to None.
         """
+        self._open_error = open_error
         self._script = script or []
         self._text_replies = list(text_replies or [])
         self.session: ScriptedLiveSession | None = None
@@ -126,7 +136,12 @@ class ScriptedGateway:
 
         Returns:
             ScriptedLiveSession: The session, also kept on `self.session` for assertions.
+
+        Raises:
+            Exception: The `open_error`, if one was given.
         """
+        if self._open_error:
+            raise self._open_error
         self.plan = plan
         self.session = ScriptedLiveSession(self._script)
         return self.session

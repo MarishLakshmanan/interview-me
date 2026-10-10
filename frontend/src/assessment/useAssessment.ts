@@ -14,14 +14,16 @@ export type AssessmentState =
 
 /**
  * Ask for the assessment once, when the interview has ended, and keep its state for the report screen.
- * It is never requested again by itself, so a quota error is not retried.
+ * It is never requested again by itself, so a quota error is not retried. After a broken interview it
+ * is only requested when the candidate calls `ask()`.
  *
  * @param status The interview's status.
  * @param lines The finished transcript lines.
  * @param question The question number current when the interview ended.
  * @param briefing The pasted briefing.
  * @param plan The question plan, or null before one exists.
- * @returns The assessment state: idle, loading, nothing to assess, ready or failed.
+ * @returns The assessment state (idle, loading, nothing to assess, ready or failed), whether an
+ *   assessment is on offer after a break, and ask() to take that offer.
  */
 export function useAssessment(
   status: string,
@@ -29,17 +31,21 @@ export function useAssessment(
   question: number | null,
   briefing: Briefing,
   plan: PlannedQuestion[] | null,
-): AssessmentState {
+): { state: AssessmentState; offered: boolean; ask: () => void } {
   const [state, setState] = useState<AssessmentState>({ phase: "idle" });
+  const [asked, setAsked] = useState(false);
   const requested = useRef(false);
-  const decision = plan ? assessmentDecision(status, lines) : "wait";
+  const base = plan ? assessmentDecision(status, lines) : "wait";
+  const decision = base === "offer" && asked ? "request" : base;
 
   useEffect(() => {
     if (decision === "wait") {
       requested.current = false;
+      setAsked(false);
       setState({ phase: "idle" });
       return;
     }
+    if (decision === "offer") return;
     if (requested.current) return;
     requested.current = true;
     if (decision === "nothing") {
@@ -54,5 +60,5 @@ export function useAssessment(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decision]);
 
-  return state;
+  return { state, offered: decision === "offer", ask: () => setAsked(true) };
 }
