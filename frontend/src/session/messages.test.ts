@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseServerMessage } from "./messages";
+import { buildStartMessage, parseServerMessage } from "./messages";
+
+describe("buildStartMessage", () => {
+  it("wraps the plan in a start message for the backend", () => {
+    const plan = [{ text: "Q1", kind: "opener" as const, tests: "t", good_answer: ["a"] }];
+    expect(JSON.parse(buildStartMessage(plan))).toEqual({ type: "start", plan });
+  });
+});
 
 describe("parseServerMessage", () => {
   it("parses a transcript message", () => {

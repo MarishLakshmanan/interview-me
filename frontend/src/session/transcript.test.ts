@@ -5,6 +5,7 @@ import {
   emptySession,
   endReasonText,
   interviewerState,
+  questionProgressText,
   transcriptToText,
   type SessionData,
 } from "./transcript";
@@ -124,6 +125,20 @@ describe("downloadable transcript", () => {
   it("labels speakers and marks cut-off lines", () => {
     const s = play(say("interviewer", "Hello.", true), say("candidate", "Hi.", true), say("interviewer", "So tell"), { type: "interrupted" });
     expect(transcriptToText(s.lines)).toBe("Interviewer: Hello.\n\nYou: Hi.\n\nInterviewer: So tell [cut off]\n");
+  });
+});
+
+describe("questionProgressText", () => {
+  it("shows the number out of the plan's length", () => {
+    expect(questionProgressText(3, 7)).toBe("question 3 of 7");
+  });
+
+  it("shows nothing before the first question", () => {
+    expect(questionProgressText(null, 7)).toBeNull();
+  });
+
+  it("never reports a number beyond the plan", () => {
+    expect(questionProgressText(9, 7)).toBe("question 7 of 7");
   });
 });
 
