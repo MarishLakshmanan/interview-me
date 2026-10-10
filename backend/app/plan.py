@@ -218,6 +218,31 @@ def check_briefing(briefing: dict) -> dict[str, str]:
     return fields
 
 
+async def ask_text_model(gateway: "GeminiGateway", settings: Settings, prompt: str, schema: dict) -> dict:
+    """Make one structured text-model call (never retried) and turn its failures into readable errors.
+
+    Args:
+        gateway (GeminiGateway): How the backend reaches Gemini.
+        settings (Settings): Holds the text model id.
+        prompt (str): What to ask.
+        schema (dict): JSON schema the answer must follow.
+
+    Returns:
+        dict: The model's parsed JSON answer.
+
+    Raises:
+        PlanError: If the quota is used up (429) or the reply is not valid JSON (502).
+    """
+    try:
+        return await gateway.generate_structured(settings.text_model, prompt, schema)
+    except QuotaExceededError as error:
+        raise PlanError(
+            "The daily request limit for the model has been reached. Please try again later.", 429
+        ) from error
+    except ValueError as error:
+        raise PlanError("The model's reply could not be read. Please try again.", 502) from error
+
+
 async def build_plan(gateway: "GeminiGateway", settings: Settings, briefing: dict) -> list[PlannedQuestion]:
     """Turn a briefing into a seven-question plan with one text-model call (no retries).
 
@@ -234,15 +259,7 @@ async def build_plan(gateway: "GeminiGateway", settings: Settings, briefing: dic
             or the model's reply is not a usable plan.
     """
     fields = check_briefing(briefing)
-    try:
-        reply = await gateway.generate_structured(settings.text_model, PLAN_PROMPT.format(**fields), PLAN_SCHEMA)
-    except QuotaExceededError as error:
-        raise PlanError(
-            "The daily request limit for the model has been reached. Please try again later.", 429
-        ) from error
-    except ValueError as error:
-        raise PlanError("The model's reply could not be read. Please try again.", 502) from error
-
+    reply = await ask_text_model(gateway, settings, PLAN_PROMPT.format(**fields), PLAN_SCHEMA)
     if reply.get("cannot_identify_role"):
         reason = str(reply.get("reason") or "").strip()
         raise PlanError(
