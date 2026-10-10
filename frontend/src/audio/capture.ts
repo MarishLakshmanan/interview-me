@@ -20,7 +20,7 @@ export async function startCapture(
   onWaitingForPermission: () => void = () => {},
 ): Promise<Capture> {
   const context = new AudioContext({ sampleRate: 16000 });
-  let stream: MediaStream;
+  let stream: MediaStream | null = null;
   try {
     // The browser hides mediaDevices entirely on a page that is not a secure context (e.g. a LAN address).
     if (!navigator.mediaDevices?.getUserMedia) throw new MicError("insecure");
@@ -33,6 +33,8 @@ export async function startCapture(
     );
     await context.audioWorklet.addModule(new URL("./pcm-recorder.worklet.js", import.meta.url));
   } catch (error) {
+    // Anything failing after the stream was acquired must release it, or the microphone stays live.
+    stream?.getTracks().forEach((track) => track.stop());
     void context.close();
     throw error;
   }
