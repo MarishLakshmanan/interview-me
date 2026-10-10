@@ -4,6 +4,12 @@ Wire protocol (first pass):
 
 Browser -> backend
     binary frame   16 kHz, 16-bit, mono PCM microphone audio
+    text frame     {"type": "start", "plan": [{"text", "kind", "tests", "good_answer"} x 7]}
+                   must be the first message to use a plan from POST /api/plan; if the first
+                   message is anything else (such as audio), or nothing arrives within
+                   start_wait_seconds, the built-in sample plan is used and that message is
+                   handled normally. The interviewer only ever receives
+                   each question's text and what it tests, never its good_answer points.
     text frame     {"type": "end"}  the candidate ends the interview early
 
 Backend -> browser
@@ -26,6 +32,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from app.config import Settings
 from app.gateway import GeminiGateway, LiveSession
+from app.plan import PlannedQuestion
 
 log = logging.getLogger(__name__)
 
@@ -48,15 +55,25 @@ class TranscriptLine:
 class InterviewBridge:
     """Runs a single interview: audio in from the browser, audio and captions back out."""
 
-    def __init__(self, websocket: WebSocket, settings: Settings, plan: list[str], gateway: GeminiGateway) -> None:
+    def __init__(
+        self,
+        websocket: WebSocket,
+        settings: Settings,
+        plan: list[PlannedQuestion],
+        gateway: GeminiGateway,
+        first_message: dict | None = None,
+    ) -> None:
         """Set up the bridge for one interview.
 
         Args:
             websocket (WebSocket): The accepted connection to the browser.
             settings (Settings): Models, voice and time limits.
-            plan (list[str]): The planned questions, in order.
+            plan (list[PlannedQuestion]): The planned questions, in order.
             gateway (GeminiGateway): Where the live session comes from (real or scripted).
+            first_message (dict, optional): A frame already read from the socket (to pick the plan)
+                that still has to be handled. Defaults to None.
         """
+        self._first_message = first_message
         self._ws = websocket
         self._settings = settings
         self._plan = plan
@@ -150,7 +167,8 @@ class InterviewBridge:
         """Read the browser's frames: microphone audio into the live queue, plus control messages."""
         try:
             while True:
-                message = await self._ws.receive()
+                message = self._first_message or await self._ws.receive()
+                self._first_message = None
                 if message["type"] == "websocket.disconnect":
                     break
                 if message.get("bytes"):

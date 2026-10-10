@@ -103,28 +103,31 @@ class ScriptedLiveSession:
 class ScriptedGateway:
     """Stands in for the real Gemini gateway: scripted live events, queued text-model replies."""
 
-    def __init__(self, script: list | None = None, text_replies: list[dict] | None = None) -> None:
+    def __init__(self, script: list | None = None, text_replies: list[dict | Exception] | None = None) -> None:
         """Set up the gateway.
 
         Args:
             script (list, optional): Live events to play. Defaults to None (an empty interview).
-            text_replies (list[dict], optional): Replies for structured text calls, in order. Defaults to None.
+            text_replies (list[dict | Exception], optional): Replies for structured text calls, in order;
+                an exception is raised instead of returned. Defaults to None.
         """
         self._script = script or []
         self._text_replies = list(text_replies or [])
         self.session: ScriptedLiveSession | None = None
+        self.plan: list | None = None
         self.text_prompts: list[str] = []
 
-    async def open_live_session(self, plan: list[str], settings) -> ScriptedLiveSession:
+    async def open_live_session(self, plan: list, settings) -> ScriptedLiveSession:
         """Open the scripted live session.
 
         Args:
-            plan (list[str]): The planned questions (ignored).
+            plan (list[PlannedQuestion]): The planned questions, kept on `self.plan` for assertions.
             settings (Settings): Backend settings (ignored).
 
         Returns:
             ScriptedLiveSession: The session, also kept on `self.session` for assertions.
         """
+        self.plan = plan
         self.session = ScriptedLiveSession(self._script)
         return self.session
 
@@ -138,6 +141,12 @@ class ScriptedGateway:
 
         Returns:
             dict: The next queued reply.
+
+        Raises:
+            Exception: A queued exception, raised as is, to simulate a failing model call.
         """
         self.text_prompts.append(prompt)
-        return self._text_replies.pop(0)
+        reply = self._text_replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply

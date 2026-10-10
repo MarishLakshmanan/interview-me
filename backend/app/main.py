@@ -1,16 +1,34 @@
 """FastAPI entry point: a health check and the interview WebSocket."""
 
+import asyncio
 import json
 import logging
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 
 from app.bridge import InterviewBridge
 from app.config import Settings, load_settings
 from app.gateway import GeminiGateway, RealGeminiGateway
-from app.interviewer import SAMPLE_PLAN
+from app.plan import SAMPLE_PLAN, PlanError, build_plan, plan_from_payload, plan_to_payload
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
+def parse_start_message(message: dict) -> dict | None:
+    """Recognise a text frame that is a `start` message.
+
+    Args:
+        message (dict): A raw ASGI WebSocket receive message.
+
+    Returns:
+        dict | None: The parsed start message, or None if the frame is anything else.
+    """
+    try:
+        body = json.loads(message["text"]) if message.get("text") else None
+    except json.JSONDecodeError:
+        return None
+    return body if isinstance(body, dict) and body.get("type") == "start" else None
 
 
 def create_app(gateway: GeminiGateway | None = None, settings: Settings | None = None) -> FastAPI:
@@ -35,6 +53,25 @@ def create_app(gateway: GeminiGateway | None = None, settings: Settings | None =
         """
         return {"status": "ok"}
 
+    @app.post("/api/plan")
+    async def create_plan(briefing: dict = Body(default_factory=dict)) -> JSONResponse:
+        """Prepare the question plan for a briefing, including the strong-answer points.
+
+        Args:
+            briefing (dict): JSON with job_description, company_summary and resume, all required.
+
+        Returns:
+            JSONResponse: {"questions": [...]} on success, or {"error": message} with a 4xx/5xx status.
+        """
+        try:
+            active_settings = settings or load_settings()
+            questions = await build_plan(gateway, active_settings, briefing)
+        except PlanError as error:
+            return JSONResponse({"error": str(error)}, status_code=error.status)
+        except RuntimeError as error:
+            return JSONResponse({"error": str(error)}, status_code=500)
+        return JSONResponse({"questions": plan_to_payload(questions)})
+
     @app.websocket("/ws/interview")
     async def interview(websocket: WebSocket) -> None:
         """Run one voice interview over this connection, then close it.
@@ -50,7 +87,23 @@ def create_app(gateway: GeminiGateway | None = None, settings: Settings | None =
             await websocket.close(code=1011)
             return
 
-        await InterviewBridge(websocket, active_settings, SAMPLE_PLAN, gateway).run()
+        try:  # a browser that sends nothing at first still gets an interview, on the sample plan
+            first = await asyncio.wait_for(websocket.receive(), active_settings.start_wait_seconds)
+        except TimeoutError:
+            first = None
+        if first and first["type"] == "websocket.disconnect":
+            return
+        plan, first_message = SAMPLE_PLAN, first
+        start = parse_start_message(first) if first else None
+        if start is not None:
+            try:
+                plan, first_message = plan_from_payload(start.get("plan")), None
+            except ValueError as error:
+                await websocket.send_text(json.dumps({"type": "error", "message": f"Invalid plan: {error}"}))
+                await websocket.close(code=1008)
+                return
+
+        await InterviewBridge(websocket, active_settings, plan, gateway, first_message).run()
         try:
             await websocket.close()
         except (WebSocketDisconnect, RuntimeError):
