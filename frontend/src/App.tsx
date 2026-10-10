@@ -3,7 +3,7 @@ import { useInterview } from "./session/useInterview";
 /** First-pass interview page: Start, a caption line per side, and an end button. */
 export function App() {
   const interview = useInterview();
-  const { status, captions, interviewerSpeaking, question, errorMessage } = interview;
+  const { status, captions, interviewerSpeaking, question, errorMessage, notice } = interview;
   const running = status === "connecting" || status === "live";
 
   return (
@@ -21,6 +21,7 @@ export function App() {
         {running && ` - interviewer ${interviewerSpeaking ? "speaking" : "listening"}`}
         {question !== null && ` - question ${question}`}
       </p>
+      {notice && <p role="status">{notice}</p>}
       {errorMessage && <p role="alert">{errorMessage}</p>}
 
       <p>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { startCapture, type Capture } from "../audio/capture";
+import { WAITING_FOR_PERMISSION_MESSAGE } from "../audio/micErrors";
 import { startPlayback, type Playback } from "../audio/playback";
 import { applyTranscript, emptyCaptions, type Captions } from "./captions";
 import { parseServerMessage } from "./messages";
@@ -13,6 +14,8 @@ export interface InterviewState {
   captions: Captions;
   question: number | null;
   errorMessage: string | null;
+  /** A non-fatal hint, e.g. that we are waiting for the microphone permission prompt. */
+  notice: string | null;
 }
 
 const initialState: InterviewState = {
@@ -21,6 +24,7 @@ const initialState: InterviewState = {
   captions: emptyCaptions,
   question: null,
   errorMessage: null,
+  notice: null,
 };
 
 /**
@@ -47,7 +51,7 @@ export function useInterview() {
       release();
       socket.current?.close();
       socket.current = null;
-      setState((s) => ({ ...s, status: "error", interviewerSpeaking: false, errorMessage: message }));
+      setState((s) => ({ ...s, status: "error", interviewerSpeaking: false, errorMessage: message, notice: null }));
     },
     [release],
   );
@@ -96,10 +100,14 @@ export function useInterview() {
     // Both audio contexts are created synchronously inside the click, before any await.
     const [pb, cap] = await Promise.allSettled([
       startPlayback((playing) => setState((s) => ({ ...s, interviewerSpeaking: playing }))),
-      startCapture((chunk) => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(chunk);
-      }),
+      startCapture(
+        (chunk) => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(chunk);
+        },
+        () => setState((s) => ({ ...s, notice: WAITING_FOR_PERMISSION_MESSAGE })),
+      ),
     ]);
+    setState((s) => (s.notice === null ? s : { ...s, notice: null }));
     if (pb.status === "fulfilled") playback.current = pb.value;
     if (cap.status === "fulfilled") capture.current = cap.value;
     const failure = [pb, cap].find((r) => r.status === "rejected");
