@@ -9,7 +9,7 @@ from app.config import Settings
 from app.main import create_app
 from tests.scripted_gateway import AFTER_CLOSE, ScriptedGateway, call, make_event, say
 
-SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60)
+SETTINGS = Settings(live_model="m", voice="v", max_interview_seconds=60, goodbye_grace_seconds=60, start_wait_seconds=0.1)
 
 
 def run_interview(script: list, settings: Settings = SETTINGS, end_after: str | None = None):
@@ -147,7 +147,7 @@ def test_browser_leaving_ends_with_that_reason(caplog) -> None:
 
 def test_hard_time_limit_ends_the_interview() -> None:
     """When the time limit passes the backend ends the interview itself."""
-    limited = Settings(live_model="m", voice="v", max_interview_seconds=0.2, goodbye_grace_seconds=60)
+    limited = Settings(live_model="m", voice="v", max_interview_seconds=0.2, goodbye_grace_seconds=60, start_wait_seconds=0.1)
     messages, _ = run_interview([say("interviewer", "Hello.")], settings=limited)
 
     assert messages[-1]["reason"] == "time_limit"

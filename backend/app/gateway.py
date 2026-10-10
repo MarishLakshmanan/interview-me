@@ -14,10 +14,12 @@ from google.adk.agents.live_request_queue import LiveRequestQueue
 from google.adk.agents.run_config import RunConfig
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-from google.genai import types
+from google.genai import errors, types
 
 from app.config import Settings
+from app.errors import QuotaExceededError
 from app.interviewer import build_interviewer
+from app.plan import PlannedQuestion
 
 APP_NAME = "interview-me"
 USER_ID = "candidate"
@@ -55,11 +57,11 @@ class LiveSession(Protocol):
 class GeminiGateway(Protocol):
     """Everything the backend asks of Gemini."""
 
-    async def open_live_session(self, plan: list[str], settings: Settings) -> LiveSession:
+    async def open_live_session(self, plan: list[PlannedQuestion], settings: Settings) -> LiveSession:
         """Open a live interview session for one interview.
 
         Args:
-            plan (list[str]): The planned questions, in order.
+            plan (list[PlannedQuestion]): The planned questions, in order.
             settings (Settings): Live model, voice and time limits.
 
         Returns:
@@ -155,11 +157,11 @@ def build_run_config(voice: str) -> RunConfig:
 class RealGeminiGateway:
     """The production gateway: ADK for the live interview, `google-genai` for text calls."""
 
-    async def open_live_session(self, plan: list[str], settings: Settings) -> AdkLiveSession:
+    async def open_live_session(self, plan: list[PlannedQuestion], settings: Settings) -> AdkLiveSession:
         """Open a live interview session through ADK.
 
         Args:
-            plan (list[str]): The planned questions, in order.
+            plan (list[PlannedQuestion]): The planned questions, in order.
             settings (Settings): Live model, voice and time limits.
 
         Returns:
@@ -188,15 +190,21 @@ class RealGeminiGateway:
 
         Raises:
             ValueError: If the model's reply is not valid JSON.
+            QuotaExceededError: If Gemini refuses because the request quota is used up.
         """
         client = genai.Client()
-        response = await client.aio.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json", response_json_schema=schema
-            ),
-        )
+        try:
+            response = await client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json", response_json_schema=schema
+                ),
+            )
+        except errors.APIError as error:
+            if error.code == 429:
+                raise QuotaExceededError(str(error)) from error
+            raise
         try:
             return json.loads(response.text or "")
         except json.JSONDecodeError as error:

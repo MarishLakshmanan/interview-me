@@ -19,12 +19,17 @@ class Settings:
         voice (str): Prebuilt voice name for the interviewer.
         max_interview_seconds (int): Hard stop for one interview, enforced by the backend.
         goodbye_grace_seconds (int): How long to wait for the closing words before closing anyway.
+        text_model (str): Gemini text model used for the question plan and the assessment.
+        start_wait_seconds (float): How long to wait for the browser's first message (which picks
+            the plan) before using the sample plan.
     """
 
     live_model: str
     voice: str
     max_interview_seconds: int
     goodbye_grace_seconds: int
+    text_model: str = "gemini-3.8-flash"
+    start_wait_seconds: float = 1.5
 
 
 def load_settings() -> Settings:
@@ -43,4 +48,6 @@ def load_settings() -> Settings:
         voice=os.environ.get("LIVE_VOICE", "Charon"),
         max_interview_seconds=int(os.environ.get("MAX_INTERVIEW_SECONDS", "1500")),
         goodbye_grace_seconds=int(os.environ.get("GOODBYE_GRACE_SECONDS", "20")),
+        text_model=os.environ.get("TEXT_MODEL", "gemini-3.8-flash"),
+        start_wait_seconds=float(os.environ.get("START_WAIT_SECONDS", "1.5")),
     )

@@ -3,17 +3,10 @@
 from google.adk.agents import Agent
 from google.adk.tools import ToolContext
 
+from app.plan import PlannedQuestion
+
 QUESTION_KEY = "current_question"
 ENDED_KEY = "interview_ended"
-
-# Used until the question-plan step exists, so the voice loop can be tried end to end.
-SAMPLE_PLAN = [
-    "Tell me about yourself and what drew you to this role.",
-    "Describe a technically difficult problem you solved recently and how you approached it.",
-    "Tell me about a time you disagreed with a teammate. How did you handle it?",
-    "How do you decide what to test, and what to leave untested?",
-    "Where do you want to grow over the next two years?",
-]
 
 INSTRUCTION = """You are a professional, friendly interviewer running a practice job interview.
 
@@ -66,17 +59,23 @@ def end_interview(tool_context: ToolContext) -> dict:
     return {"status": "ok"}
 
 
-def build_interviewer(plan: list[str], model: str) -> Agent:
+def build_interviewer(plan: list[PlannedQuestion], model: str) -> Agent:
     """Create the interviewer agent for one interview.
 
+    Only each question's text and what it tests go into the instructions; the strong-answer
+    points stay out so the live model cannot lead or coach the candidate.
+
     Args:
-        plan (list[str]): The planned questions, in the order they should be asked.
+        plan (list[PlannedQuestion]): The planned questions, in the order they should be asked.
         model (str): Gemini Live model id.
 
     Returns:
         Agent: An ADK agent holding the instructions and the two tools.
     """
-    numbered = "\n".join(f"{number}. {question}" for number, question in enumerate(plan, start=1))
+    numbered = "\n".join(
+        f"{number}. {question.text}\n   (Tests: {question.tests}. Use this to choose follow-ups; never say it aloud.)"
+        for number, question in enumerate(plan, start=1)
+    )
     return Agent(
         name="interviewer",
         model=model,
