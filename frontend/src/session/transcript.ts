@@ -8,6 +8,8 @@ export interface TranscriptEntry {
   final: boolean;
   /** True when the interviewer was interrupted while this line was being spoken. */
   cutOff: boolean;
+  /** The planned question number that was current when the line finished (null before the first). */
+  question: number | null;
 }
 
 /** The part of the interview state that only the backend's messages change. */
@@ -34,21 +36,26 @@ function withLine(lines: TranscriptEntry[], index: number, change: Partial<Trans
  *
  * @param lines The transcript so far.
  * @param message The speaker, text and final flag that just arrived.
+ * @param question The current question number; a line is tagged with it when it finishes.
  * @returns The new transcript; the input is not modified.
  */
-function applyTranscript(lines: TranscriptEntry[], message: { speaker: Speaker; text: string; final: boolean }): TranscriptEntry[] {
+function applyTranscript(
+  lines: TranscriptEntry[],
+  message: { speaker: Speaker; text: string; final: boolean },
+  question: number | null,
+): TranscriptEntry[] {
   const newest = lastIndexWhere(lines, (line) => line.speaker === message.speaker);
   const open = newest >= 0 && !lines[newest].final ? newest : -1;
   const openLine = open >= 0 ? lines[open] : null;
 
   if (message.final) {
-    if (openLine) return withLine(lines, open, { text: message.text, final: true });
-    return [...lines, { speaker: message.speaker, text: message.text, final: true, cutOff: false }];
+    if (openLine) return withLine(lines, open, { text: message.text, final: true, question });
+    return [...lines, { speaker: message.speaker, text: message.text, final: true, cutOff: false, question }];
   }
   if (openLine && !openLine.cutOff) return withLine(lines, open, { text: openLine.text + message.text });
   // A partial after a cut-off (or after a final) belongs to a new line.
-  const closed = openLine ? withLine(lines, open, { final: true }) : lines;
-  return [...closed, { speaker: message.speaker, text: message.text, final: false, cutOff: false }];
+  const closed = openLine ? withLine(lines, open, { final: true, question }) : lines;
+  return [...closed, { speaker: message.speaker, text: message.text, final: false, cutOff: false, question }];
 }
 
 /**
@@ -67,8 +74,8 @@ function markCutOff(lines: TranscriptEntry[]): TranscriptEntry[] {
   return withLine(lines, index, { cutOff: true });
 }
 
-function fromFinished(lines: TranscriptLine[]): TranscriptEntry[] {
-  return lines.map((line) => ({ ...line, final: true, cutOff: false }));
+function fromFinished(lines: TranscriptLine[], question: number | null): TranscriptEntry[] {
+  return lines.map((line) => ({ ...line, final: true, cutOff: false, question }));
 }
 
 /**
@@ -81,15 +88,15 @@ function fromFinished(lines: TranscriptLine[]): TranscriptEntry[] {
 export function applyServerMessage(data: SessionData, message: ServerMessage): SessionData {
   switch (message.type) {
     case "transcript":
-      return { ...data, lines: applyTranscript(data.lines, message) };
+      return { ...data, lines: applyTranscript(data.lines, message, data.question) };
     case "question":
       return { ...data, question: message.number };
     case "interrupted":
       return { ...data, lines: markCutOff(data.lines) };
     case "interview_ended": {
       // Keep what was shown (with cut-off marks); the backend's finished lines are only a fallback.
-      const shown = data.lines.filter((line) => line.text.trim() !== "").map((line) => ({ ...line, final: true }));
-      const lines = shown.length > 0 ? shown : fromFinished(message.transcript);
+      const shown = data.lines.filter((line) => line.text.trim() !== "").map((line) => (line.final ? line : { ...line, final: true, question: data.question }));
+      const lines = shown.length > 0 ? shown : fromFinished(message.transcript, data.question);
       return { ...data, lines, endReason: message.reason };
     }
     default:

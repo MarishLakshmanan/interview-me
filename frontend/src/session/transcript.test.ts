@@ -27,12 +27,12 @@ describe("transcript assembly", () => {
 
   it("appends partials to the in-progress line of that speaker", () => {
     const s = play(say("interviewer", "Tell me "), say("interviewer", "about yourself"));
-    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Tell me about yourself", final: false, cutOff: false }]);
+    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Tell me about yourself", final: false, cutOff: false, question: null }]);
   });
 
   it("replaces the in-progress line with the final text and commits it", () => {
     const s = play(say("candidate", "I am"), say("candidate", "I am an engineer.", true));
-    expect(s.lines).toEqual([{ speaker: "candidate", text: "I am an engineer.", final: true, cutOff: false }]);
+    expect(s.lines).toEqual([{ speaker: "candidate", text: "I am an engineer.", final: true, cutOff: false, question: null }]);
   });
 
   it("starts a new line when a partial follows a final", () => {
@@ -67,12 +67,12 @@ describe("transcript assembly", () => {
 describe("cut-off marking", () => {
   it("marks the interviewer line in progress and keeps its text", () => {
     const s = play(say("interviewer", "Let me explain how this"), { type: "interrupted" });
-    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Let me explain how this", final: false, cutOff: true }]);
+    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Let me explain how this", final: false, cutOff: true, question: null }]);
   });
 
   it("keeps the mark when the final for that line arrives afterwards", () => {
     const s = play(say("interviewer", "Let me explain"), { type: "interrupted" }, say("interviewer", "Let me explain how this works.", true));
-    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Let me explain how this works.", final: true, cutOff: true }]);
+    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Let me explain how this works.", final: true, cutOff: true, question: null }]);
   });
 
   it("starts a new line for a partial that arrives after the cut-off", () => {
@@ -106,12 +106,12 @@ describe("ending", () => {
   it("records the reason and commits open lines, keeping cut-off marks", () => {
     const s = play(say("interviewer", "Mid-sentence"), { type: "interrupted" }, { type: "interview_ended", reason: "candidate", transcript: [] });
     expect(s.endReason).toBe("candidate");
-    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Mid-sentence", final: true, cutOff: true }]);
+    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Mid-sentence", final: true, cutOff: true, question: null }]);
   });
 
   it("falls back to the backend transcript when nothing was shown", () => {
     const s = play({ type: "interview_ended", reason: "completed", transcript: [{ speaker: "interviewer", text: "Bye" }] });
-    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Bye", final: true, cutOff: false }]);
+    expect(s.lines).toEqual([{ speaker: "interviewer", text: "Bye", final: true, cutOff: false, question: null }]);
   });
 
   it("describes each reason in plain words", () => {

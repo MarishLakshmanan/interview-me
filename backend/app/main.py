@@ -7,6 +7,7 @@ import logging
 from fastapi import Body, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
+from app.assessment import build_assessment
 from app.bridge import InterviewBridge
 from app.config import Settings, load_settings
 from app.gateway import GeminiGateway, RealGeminiGateway
@@ -71,6 +72,25 @@ def create_app(gateway: GeminiGateway | None = None, settings: Settings | None =
         except RuntimeError as error:
             return JSONResponse({"error": str(error)}, status_code=500)
         return JSONResponse({"questions": plan_to_payload(questions)})
+
+    @app.post("/api/assessment")
+    async def create_assessment(request: dict = Body(default_factory=dict)) -> JSONResponse:
+        """Assess a finished interview from the briefing, plan and transcript; nothing is stored.
+
+        Args:
+            request (dict): JSON with briefing, plan, lines (each with its question number) and reached.
+
+        Returns:
+            JSONResponse: The assessment on success, or {"error": message} with a 4xx/5xx status.
+        """
+        try:
+            active_settings = settings or load_settings()
+            assessment = await build_assessment(gateway, active_settings, request)
+        except PlanError as error:  # AssessmentError is a PlanError
+            return JSONResponse({"error": str(error)}, status_code=error.status)
+        except RuntimeError as error:
+            return JSONResponse({"error": str(error)}, status_code=500)
+        return JSONResponse(assessment)
 
     @app.websocket("/ws/interview")
     async def interview(websocket: WebSocket) -> None:

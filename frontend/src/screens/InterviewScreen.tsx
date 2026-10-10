@@ -1,21 +1,7 @@
 import type { PlannedQuestion } from "../plan/planApi";
 import type { useInterview } from "../session/useInterview";
-import {
-  endReasonText,
-  questionProgressText,
-  speakerLabel,
-  transcriptToText,
-  type TranscriptEntry,
-} from "../session/transcript";
-
-function downloadTranscript(lines: TranscriptEntry[]) {
-  const url = URL.createObjectURL(new Blob([transcriptToText(lines)], { type: "text/plain" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "interview-transcript.txt";
-  link.click();
-  URL.revokeObjectURL(url);
-}
+import { downloadTranscript } from "../download";
+import { endReasonText, questionProgressText, speakerLabel } from "../session/transcript";
 
 interface Props {
   interview: ReturnType<typeof useInterview>;
