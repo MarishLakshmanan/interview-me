@@ -110,6 +110,18 @@ export function transcriptToText(lines: TranscriptEntry[]): string {
   return lines.map((line) => `${speakerLabel[line.speaker]}: ${line.text}${line.cutOff ? " [cut off]" : ""}`).join("\n\n") + "\n";
 }
 
+/**
+ * Say how far through the plan the interview is.
+ *
+ * @param question The backend's current question number, or null before the first one.
+ * @param total How many questions the plan has.
+ * @returns A phrase like "question 3 of 7" (capped at the plan's length), or null if none is current.
+ */
+export function questionProgressText(question: number | null, total: number): string | null {
+  if (question === null) return null;
+  return `question ${Math.min(question, total)} of ${total}`;
+}
+
 export type InterviewerState = "idle" | "speaking" | "listening";
 
 /**

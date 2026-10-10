@@ -1,5 +1,17 @@
+import type { PlannedQuestion } from "../plan/planApi";
+
 /** Messages the backend sends as text frames; see backend/app/bridge.py for the protocol. */
 export type Speaker = "candidate" | "interviewer";
+
+/**
+ * Build the first message of an interview, which carries the question plan to the backend.
+ *
+ * @param plan (PlannedQuestion[]): The plan returned by POST /api/plan.
+ * @returns string: The JSON text frame to send before any audio.
+ */
+export function buildStartMessage(plan: PlannedQuestion[]): string {
+  return JSON.stringify({ type: "start", plan });
+}
 
 export interface TranscriptMessage {
   type: "transcript";

@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 and click Start. The dev server forwards `/ws` to the backend on port 8000, so the page needs no cross-origin setup. Headphones are recommended. The microphone only works on `localhost` or HTTPS.
+Open http://localhost:5173, paste the job description, company summary and resume, and press Prepare interview. The backend prepares a seven-question plan (one free text-model request) and the interview starts with it; the plan is not shown. The dev server forwards `/ws` and `/api` to the backend on port 8000, so the page needs no cross-origin setup. Headphones are recommended. The microphone only works on `localhost` or HTTPS.
 
 ## Test
 

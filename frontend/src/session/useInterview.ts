@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { startCapture, type Capture } from "../audio/capture";
 import { WAITING_FOR_PERMISSION_MESSAGE } from "../audio/micErrors";
 import { startPlayback, type Playback } from "../audio/playback";
-import { parseServerMessage } from "./messages";
+import type { PlannedQuestion } from "../plan/planApi";
+import { buildStartMessage, parseServerMessage } from "./messages";
 import { applyServerMessage, emptySession, interviewerState, type SessionData } from "./transcript";
 
 export type InterviewStatus = "idle" | "connecting" | "live" | "ended" | "error";
@@ -28,7 +29,7 @@ const initialState: InterviewState = {
  * Own one interview connection: the WebSocket, microphone capture and playback.
  * This is the single place the interview state lives, so a later avatar can read it from here.
  *
- * @returns The current state plus start() and end(). Call start() directly from a click handler.
+ * @returns The current state plus start(plan) and end(). start sends the plan as the first message.
  */
 export function useInterview() {
   const [state, setState] = useState<InterviewState>(initialState);
@@ -53,9 +54,10 @@ export function useInterview() {
     [release],
   );
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (plan: PlannedQuestion[]) => {
     if (socket.current) return;
     setState({ ...initialState, status: "connecting" });
+    let startSent = false;
 
     const scheme = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${scheme}://${location.host}/ws/interview`);
@@ -88,7 +90,12 @@ export function useInterview() {
           break;
       }
     };
-    ws.onopen = () => setState((s) => (s.status === "connecting" ? { ...s, status: "live" } : s));
+    ws.onopen = () => {
+      // The plan goes first, before any audio chunk is allowed through.
+      ws.send(buildStartMessage(plan));
+      startSent = true;
+      setState((s) => (s.status === "connecting" ? { ...s, status: "live" } : s));
+    };
     ws.onclose = () => {
       if (socket.current === ws) fail("The connection to the interviewer was lost.");
     };
@@ -98,7 +105,7 @@ export function useInterview() {
       startPlayback((playing) => setState((s) => ({ ...s, interviewerSpeaking: playing }))),
       startCapture(
         (chunk) => {
-          if (ws.readyState === WebSocket.OPEN) ws.send(chunk);
+          if (startSent && ws.readyState === WebSocket.OPEN) ws.send(chunk);
         },
         () => setState((s) => ({ ...s, notice: WAITING_FOR_PERMISSION_MESSAGE })),
       ),
