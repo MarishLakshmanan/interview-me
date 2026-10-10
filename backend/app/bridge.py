@@ -21,23 +21,14 @@ import json
 import logging
 import time
 from dataclasses import asdict, dataclass
-from uuid import uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect
-from google.adk.agents.live_request_queue import LiveRequestQueue
-from google.adk.agents.run_config import RunConfig
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
 
 from app.config import Settings
-from app.interviewer import build_interviewer
+from app.gateway import GeminiGateway, LiveSession
 
 log = logging.getLogger(__name__)
 
-APP_NAME = "interview-me"
-USER_ID = "candidate"
-INPUT_MIME = "audio/pcm;rate=16000"
 KICKOFF_TEXT = "Hello, I'm ready. Please begin the interview."
 
 
@@ -57,18 +48,20 @@ class TranscriptLine:
 class InterviewBridge:
     """Runs a single interview: audio in from the browser, audio and captions back out."""
 
-    def __init__(self, websocket: WebSocket, settings: Settings, plan: list[str]) -> None:
+    def __init__(self, websocket: WebSocket, settings: Settings, plan: list[str], gateway: GeminiGateway) -> None:
         """Set up the bridge for one interview.
 
         Args:
             websocket (WebSocket): The accepted connection to the browser.
             settings (Settings): Models, voice and time limits.
             plan (list[str]): The planned questions, in order.
+            gateway (GeminiGateway): Where the live session comes from (real or scripted).
         """
         self._ws = websocket
         self._settings = settings
         self._plan = plan
-        self._queue = LiveRequestQueue()
+        self._gateway = gateway
+        self._session: LiveSession | None = None
         self._transcript: list[TranscriptLine] = []
         self._end_reason: str | None = None
         self._browser_gone = False
@@ -82,25 +75,13 @@ class InterviewBridge:
         Returns:
             list[TranscriptLine]: The finished lines of the conversation, in order.
         """
-        session_service = InMemorySessionService()
-        runner = Runner(
-            app_name=APP_NAME,
-            agent=build_interviewer(self._plan, self._settings.live_model),
-            session_service=session_service,
-        )
-        session_id = uuid4().hex
-        await session_service.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=session_id)
+        self._session = await self._gateway.open_live_session(self._plan, self._settings)
 
         helpers = [asyncio.create_task(self._upstream()), asyncio.create_task(self._time_limit())]
-        self._queue.send_content(types.Content(role="user", parts=[types.Part(text=KICKOFF_TEXT)]))
+        self._session.send_text(KICKOFF_TEXT)
         started = time.monotonic()
         try:
-            async for event in runner.run_live(
-                user_id=USER_ID,
-                session_id=session_id,
-                live_request_queue=self._queue,
-                run_config=self._run_config(),
-            ):
+            async for event in self._session.events():
                 await self._handle_event(event)
         except Exception as error:  # report any failure to the browser instead of dropping it
             log.exception("Live session failed")
@@ -110,7 +91,7 @@ class InterviewBridge:
             for task in [*helpers, self._grace_task]:
                 if task:
                     task.cancel()
-            self._queue.close()
+            self._session.close()
         log.info("Interview ended (%s) after %.0f s", self._end_reason or "completed", time.monotonic() - started)
         await self._send_json(
             {
@@ -120,27 +101,6 @@ class InterviewBridge:
             }
         )
         return self._transcript
-
-    def _run_config(self) -> RunConfig:
-        """Build the live session options: voice, plus the two settings a 20-minute interview needs.
-
-        Returns:
-            RunConfig: Options for ADK's live run.
-        """
-        return RunConfig(
-            response_modalities=["AUDIO"],
-            speech_config=types.SpeechConfig(
-                voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self._settings.voice)
-                )
-            ),
-            # Reconnects across the ~10 minute connection limit.
-            session_resumption=types.SessionResumptionConfig(),
-            # Lifts the 15 minute audio-session cap; the trigger is never reached at interview length.
-            context_window_compression=types.ContextWindowCompressionConfig(
-                trigger_tokens=100000, sliding_window=types.SlidingWindow(target_tokens=80000)
-            ),
-        )
 
     async def _handle_event(self, event) -> None:
         """Forward one ADK live event to the browser and update the interview state.
@@ -194,7 +154,7 @@ class InterviewBridge:
                 if message["type"] == "websocket.disconnect":
                     break
                 if message.get("bytes"):
-                    self._queue.send_realtime(types.Blob(mime_type=INPUT_MIME, data=message["bytes"]))
+                    self._session.send_audio(message["bytes"])
                 elif message.get("text"):
                     try:
                         control = json.loads(message["text"])
@@ -222,14 +182,15 @@ class InterviewBridge:
         self._finish("completed")
 
     def _finish(self, reason: str) -> None:
-        """Mark the interview over and close the live queue; only the first reason is kept.
+        """Mark the interview over and close the live session; only the first reason is kept.
 
         Args:
             reason (str): Why it ended: completed, candidate, candidate_left or time_limit.
         """
         if self._end_reason is None:
             self._end_reason = reason
-        self._queue.close()
+        if self._session:
+            self._session.close()
 
     async def _send_json(self, payload: dict) -> None:
         """Send one JSON message to the browser, ignoring a browser that has already gone.
