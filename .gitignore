@@ -1,0 +1,7 @@
+.scratch/
+
+# secrets and generated files
+.env
+.venv/
+__pycache__/
+node_modules/
