@@ -13,7 +13,7 @@ function downloadTranscript(lines: TranscriptEntry[]) {
 /** Interview page: Start, live transcript, interviewer state, question number and an end button. */
 export function App() {
   const interview = useInterview();
-  const { status, lines, interviewerState, question, endReason, errorMessage } = interview;
+  const { status, lines, interviewerState, question, endReason, errorMessage, notice } = interview;
   const running = status === "connecting" || status === "live";
 
   return (
@@ -37,6 +37,7 @@ export function App() {
         {question !== null && ` - question ${question}`}
       </p>
       {status === "ended" && endReason && <p>{endReasonText(endReason)}</p>}
+      {notice && <p role="status">{notice}</p>}
       {errorMessage && <p role="alert">{errorMessage}</p>}
 
       <ol aria-label="Transcript" style={{ listStyle: "none", padding: 0 }}>
