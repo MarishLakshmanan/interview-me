@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createLatestRequest } from "../api/latestRequest";
 import type { Briefing } from "../briefing/briefing";
 import type { PlannedQuestion } from "../plan/planApi";
 import type { TranscriptEntry } from "../session/transcript";
@@ -35,11 +36,13 @@ export function useAssessment(
   const [state, setState] = useState<AssessmentState>({ phase: "idle" });
   const [asked, setAsked] = useState(false);
   const requested = useRef(false);
+  const latest = useRef(createLatestRequest());
   const base = plan ? assessmentDecision(status, lines) : "wait";
   const decision = base === "offer" && asked ? "request" : base;
 
   useEffect(() => {
     if (decision === "wait") {
+      latest.current.cancel(); // a reply still in flight belongs to the interview that was just left
       requested.current = false;
       setAsked(false);
       setState({ phase: "idle" });
@@ -53,9 +56,11 @@ export function useAssessment(
       return;
     }
     setState({ phase: "loading" });
-    void requestAssessment(buildAssessmentRequest(briefing, plan!, lines, question)).then((result) =>
-      setState(result.ok ? { phase: "ready", assessment: result.assessment } : { phase: "failed", message: result.message }),
-    );
+    const isCurrent = latest.current.begin();
+    void requestAssessment(buildAssessmentRequest(briefing, plan!, lines, question)).then((result) => {
+      if (!isCurrent()) return; // the candidate has moved on to another interview
+      setState(result.ok ? { phase: "ready", assessment: result.assessment } : { phase: "failed", message: result.message });
+    });
     // Only the moment the decision changes matters; the lines no longer change once ended.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decision]);
