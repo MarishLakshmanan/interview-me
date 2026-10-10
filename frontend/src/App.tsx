@@ -1,3 +1,4 @@
+import { planToGrade } from "./assessment/assessment";
 import { useAssessment } from "./assessment/useAssessment";
 import { usePractice } from "./practice/usePractice";
 import { BriefingScreen } from "./screens/BriefingScreen";
@@ -10,7 +11,15 @@ export function App() {
   const practice = usePractice();
   const interview = useInterview();
   const { plan } = practice;
-  const { state: assessment, offered, ask } = useAssessment(interview.status, interview.lines, interview.question, practice.briefing, plan);
+  // Grade against the plan the backend actually ran: the sample plan if it said it fell back to that.
+  const gradedPlan = plan === null ? null : planToGrade(plan, interview.samplePlan);
+  const { state: assessment, offered, ask } = useAssessment(
+    interview.status,
+    interview.lines,
+    interview.question,
+    practice.briefing,
+    gradedPlan,
+  );
 
   async function prepareAndStart() {
     const prepared = await practice.prepare();

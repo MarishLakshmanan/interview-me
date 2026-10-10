@@ -1,4 +1,4 @@
-import type { PlannedQuestion } from "../plan/planApi";
+import { isPlannedQuestion, type PlannedQuestion } from "../plan/planApi";
 
 /** Messages the backend sends as text frames; see backend/app/bridge.py for the protocol. */
 export type Speaker = "candidate" | "interviewer";
@@ -25,7 +25,18 @@ export interface TranscriptLine {
   text: string;
 }
 
+/**
+ * Which plan the backend runs the interview on. `plan` is present only for "sample", because the
+ * browser has no copy of the sample questions and must grade the answers against them.
+ */
+export interface PlanSourceMessage {
+  type: "plan_source";
+  source: "start_message" | "sample";
+  plan?: PlannedQuestion[];
+}
+
 export type ServerMessage =
+  | PlanSourceMessage
   | TranscriptMessage
   | { type: "question"; number: number }
   | { type: "interrupted" }
@@ -60,6 +71,12 @@ export function parseServerMessage(raw: string): ServerMessage | null {
   }
   if (!data || typeof data !== "object") return null;
   switch (data.type) {
+    case "plan_source":
+      if (data.source === "start_message") return { type: "plan_source", source: "start_message" };
+      if (data.source === "sample" && Array.isArray(data.plan) && data.plan.every(isPlannedQuestion)) {
+        return { type: "plan_source", source: "sample", plan: data.plan };
+      }
+      return null;
     case "transcript":
       if (isSpeaker(data.speaker) && typeof data.text === "string" && typeof data.final === "boolean") {
         return { type: "transcript", speaker: data.speaker, text: data.text, final: data.final };

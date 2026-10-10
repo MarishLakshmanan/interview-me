@@ -55,6 +55,17 @@ export function assessmentDecision(status: string, lines: TranscriptEntry[]): As
 }
 
 /**
+ * Pick the plan the answers must be graded against: the one the interview actually ran on.
+ *
+ * @param prepared The plan prepared from the briefing and sent in the start message.
+ * @param sample The sample plan, when the backend said it ran the interview on that instead; else null.
+ * @returns The sample plan if the backend used it, otherwise the prepared plan.
+ */
+export function planToGrade(prepared: PlannedQuestion[], sample: PlannedQuestion[] | null): PlannedQuestion[] {
+  return sample ?? prepared;
+}
+
+/**
  * Build the body for the assessment endpoint from what the page holds after the interview.
  *
  * @param briefing The pasted briefing.

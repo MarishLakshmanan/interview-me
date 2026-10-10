@@ -14,7 +14,7 @@ export interface PlannedQuestion {
 
 export type PlanResult = { ok: true; plan: PlannedQuestion[] } | { ok: false; message: string };
 
-const isPlannedQuestion = (q: any): q is PlannedQuestion =>
+export const isPlannedQuestion = (q: any): q is PlannedQuestion =>
   !!q &&
   typeof q.text === "string" &&
   typeof q.kind === "string" &&

@@ -32,6 +32,20 @@ describe("parseServerMessage", () => {
     });
   });
 
+  it("parses which plan the backend uses, with the plan itself only for the sample", () => {
+    const plan = [{ text: "Q1", kind: "opener", tests: "t", good_answer: ["a"] }];
+    expect(parseServerMessage('{"type":"plan_source","source":"start_message"}')).toEqual({
+      type: "plan_source",
+      source: "start_message",
+    });
+    expect(parseServerMessage(JSON.stringify({ type: "plan_source", source: "sample", plan }))).toEqual({
+      type: "plan_source",
+      source: "sample",
+      plan,
+    });
+    expect(parseServerMessage('{"type":"plan_source","source":"sample"}')).toBeNull();
+  });
+
   it("returns null for invalid JSON, unknown types and bad shapes", () => {
     expect(parseServerMessage("not json")).toBeNull();
     expect(parseServerMessage('{"type":"mystery"}')).toBeNull();

@@ -5,6 +5,7 @@ import {
   assessmentDecision,
   assessmentToMarkdown,
   buildAssessmentRequest,
+  planToGrade,
   type Assessment,
 } from "./assessment";
 
@@ -75,6 +76,18 @@ describe("buildAssessmentRequest", () => {
   it("leaves out blank lines", () => {
     const request = buildAssessmentRequest(briefing, plan, [entry("candidate", " ", 1), entry("candidate", "Hi", 1)], 1);
     expect(request.lines.map((l) => l.text)).toEqual(["Hi"]);
+  });
+});
+
+describe("planToGrade", () => {
+  const sample: PlannedQuestion[] = [{ text: "Sample?", kind: "opener", tests: "fit", good_answer: ["s"] }];
+
+  it("grades against the prepared plan unless the backend ran the sample plan", () => {
+    expect(planToGrade(plan, null)).toBe(plan);
+  });
+
+  it("grades against the sample plan when the backend says it used it", () => {
+    expect(planToGrade(plan, sample)).toBe(sample);
   });
 });
 
