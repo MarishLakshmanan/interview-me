@@ -1,25 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { startCapture, type Capture } from "../audio/capture";
 import { startPlayback, type Playback } from "../audio/playback";
-import { applyTranscript, emptyCaptions, type Captions } from "./captions";
 import { parseServerMessage } from "./messages";
+import { applyServerMessage, emptySession, interviewerState, type SessionData } from "./transcript";
 
 export type InterviewStatus = "idle" | "connecting" | "live" | "ended" | "error";
 
-export interface InterviewState {
+export interface InterviewState extends SessionData {
   status: InterviewStatus;
   /** True while sound is coming out of the speakers (from the playback buffer, not server events). */
   interviewerSpeaking: boolean;
-  captions: Captions;
-  question: number | null;
   errorMessage: string | null;
 }
 
 const initialState: InterviewState = {
   status: "idle",
   interviewerSpeaking: false,
-  captions: emptyCaptions,
-  question: null,
+  ...emptySession,
   errorMessage: null,
 };
 
@@ -70,13 +67,12 @@ export function useInterview() {
       if (!message) return;
       switch (message.type) {
         case "transcript":
-          setState((s) => ({ ...s, captions: applyTranscript(s.captions, message) }));
-          break;
         case "question":
-          setState((s) => ({ ...s, question: message.number }));
+          setState((s) => ({ ...s, ...applyServerMessage(s, message) }));
           break;
         case "interrupted":
           playback.current?.clear();
+          setState((s) => ({ ...s, ...applyServerMessage(s, message) }));
           break;
         case "error":
           setState((s) => ({ ...s, errorMessage: message.message }));
@@ -84,7 +80,7 @@ export function useInterview() {
         case "interview_ended":
           release();
           socket.current = null;
-          setState((s) => ({ ...s, status: "ended", interviewerSpeaking: false }));
+          setState((s) => ({ ...s, ...applyServerMessage(s, message), status: "ended", interviewerSpeaking: false }));
           break;
       }
     };
@@ -125,5 +121,6 @@ export function useInterview() {
     [release],
   );
 
-  return { ...state, start, end };
+  const live = state.status === "connecting" || state.status === "live";
+  return { ...state, interviewerState: interviewerState(live, state.interviewerSpeaking), start, end };
 }
