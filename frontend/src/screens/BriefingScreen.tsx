@@ -1,5 +1,10 @@
+import type { ReactNode } from "react";
 import { validateBriefing, type Briefing } from "../briefing/briefing";
 import { DAILY_LIMIT_NOTE } from "../failures";
+import { Alert } from "../ui/Alert";
+import { Button } from "../ui/Button";
+import { Card } from "../ui/Card";
+import { Spinner } from "../ui/Spinner";
 
 interface Props {
   briefing: Briefing;
@@ -10,7 +15,8 @@ interface Props {
   onSubmit: () => void;
 }
 
-const FIELD_STYLE = { display: "block", width: "100%", boxSizing: "border-box", marginTop: "0.25rem" } as const;
+const FIELD_CLASSES =
+  "mt-2 block w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60";
 
 /** Screen where the candidate pastes the briefing and asks for the question plan. */
 export function BriefingScreen({ briefing, onChange, preparing, error, onSubmit }: Props) {
@@ -20,47 +26,82 @@ export function BriefingScreen({ briefing, onChange, preparing, error, onSubmit 
 
   return (
     <form
+      className="space-y-6"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();
       }}
     >
-      <p>Paste the three parts of your briefing, then start. Headphones recommended.</p>
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight text-zinc-50">Set up your interview</h2>
+        <p className="mt-1 text-sm text-zinc-400">
+          Paste the three parts of your briefing, then start. Headphones recommended.
+        </p>
+      </div>
 
-      <label>
-        Job description
-        <textarea rows={8} style={FIELD_STYLE} value={briefing.jobDescription} onChange={set("jobDescription")} disabled={preparing} />
-      </label>
-      {check.jobDescriptionTooShort && (
-        <p role="status">Add more detail to the job description so the questions can fit the role.</p>
-      )}
+      <Card className="space-y-5">
+        <Field label="Job description" hint="The role you are practising for.">
+          <textarea
+            rows={8}
+            className={FIELD_CLASSES}
+            value={briefing.jobDescription}
+            onChange={set("jobDescription")}
+            disabled={preparing}
+          />
+        </Field>
+        {check.jobDescriptionTooShort && (
+          <p role="status" className="-mt-3 text-xs text-amber-300/90">
+            Add more detail to the job description so the questions can fit the role.
+          </p>
+        )}
 
-      <label>
-        Company summary
-        <textarea rows={4} style={FIELD_STYLE} value={briefing.companySummary} onChange={set("companySummary")} disabled={preparing} />
-      </label>
+        <Field label="Company summary" hint="What the company does and cares about.">
+          <textarea
+            rows={4}
+            className={FIELD_CLASSES}
+            value={briefing.companySummary}
+            onChange={set("companySummary")}
+            disabled={preparing}
+          />
+        </Field>
 
-      <label>
-        Resume
-        <textarea rows={8} style={FIELD_STYLE} value={briefing.resume} onChange={set("resume")} disabled={preparing} />
-      </label>
-      <p>
+        <Field label="Resume" hint="Your experience, as plain text.">
+          <textarea rows={8} className={FIELD_CLASSES} value={briefing.resume} onChange={set("resume")} disabled={preparing} />
+        </Field>
+      </Card>
+
+      <p className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-xs leading-relaxed text-zinc-400">
         Free-tier requests may be used by Google to improve its products. Remove your name and contact details from
         your resume before pasting.
       </p>
 
-      <button type="submit" disabled={!check.canSubmit || preparing}>
+      <Button type="submit" variant="primary" className="w-full py-3 text-base" disabled={!check.canSubmit || preparing}>
+        {preparing && <Spinner />}
         Prepare interview
-      </button>
+      </Button>
 
-      {preparing && <p role="status">Preparing your questions... this can take up to half a minute.</p>}
+      {preparing && (
+        <p role="status" className="text-center text-sm text-zinc-400">
+          Preparing your questions... this can take up to half a minute.
+        </p>
+      )}
       {error && (
-        <div role="alert">
-          <p>{error}</p>
+        <Alert tone="error">
+          <p className="font-medium">{error}</p>
           <p>{DAILY_LIMIT_NOTE}</p>
-          <p>Your text is still here; edit it or press the button to try again.</p>
-        </div>
+          <p className="text-rose-200/70">Your text is still here; edit it or press the button to try again.</p>
+        </Alert>
       )}
     </form>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-zinc-200">{label}</span>
+      <span className="ml-2 text-xs text-zinc-500">{hint}</span>
+      {children}
+    </label>
   );
 }
